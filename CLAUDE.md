@@ -15,9 +15,14 @@ Airlock is the internal codename for a spaceship MMO built in Unreal Engine 5.8 
 - `Core/AirlockCharacter` - first-person capsule + camera (no mesh yet). Binds the controller's actions. `Interact` line-traces `InteractReach` cm.
 - `Voyage/VoyageTypes.h` - `EVoyageType`, `FVoyageSpec` (type, seed, 1200 s, ship class, captain, crew cap).
 - `Voyage/VoyageSubsystem` - GameInstance subsystem: `MakeVoyageSpec` (pure, deterministic), `GetOfferedVoyages`, `RequestVoyage` (server-only stub).
-- `Ship/AirlockDoor` - trigger box + placeholder frame; on server overlap logs and broadcasts `OnTransitionRequested(Pawn, TargetSectionId)`. Level travel not wired yet.
+- `Ship/AirlockDoor` - the section boundary. Wears the kit door (soft refs to `SM_Doorway_Small_A` / `_A3` / `SM_Door_Small_A`; primitive fallback when the packs are absent). Server-owned `bIsOpen` replicated, leaf slides up `OpenDistance` (268 cm) over `OpenTime`. Two volumes: `ProximityVolume` (wide, opens the door) and `TransitionVolume` (thin, in the wall plane; server broadcasts `OnTransitionRequested(Pawn, TargetSectionId)`). Level travel not wired yet. Origin = centre of the opening on the walking surface; yaw 0 means the walking axis is X.
 - `Tests/AirlockSmokeTests.cpp` - `Airlock.Voyage.SpecIsDeterministic`, `Airlock.Core.GameModeDefaults`.
-- Maps: `Content/Maps/StationHub` (editor startup + game default map; duplicated from the engine Basic template).
+- Maps: `Content/Maps/StationHub` (editor startup + game default map) is a copy of the Interiors pack's dressed demo hall (`ModSciInteriors/Maps/Example_Dynamic`) with the pack's blueprint doors and doorway slots at both ends replaced by `AAirlockDoor`s `Airlock_Dock_A` (x -6980) and `Airlock_Dock_B` (x -4300), plus `PlayerStart_Hub` mid-hall. Rebuild recipe: `agent\queue\107-109`.
+
+## Content packs and the kit standard
+- Purchased/claimed Fab packs live in `Content/ModSci_Engineer`, `Content/ModSci_EngiProps`, `Content/ModSciInteriors` and are **git-ignored** (licence + size); `THIRD_PARTY_ASSETS.md` lists what to re-claim from Fab. Never move, rename or save over pack assets - copy (`duplicate`) into `/Game/Airlock/...` or `/Game/Maps/...` first.
+- `Docs/KitStandard.md` is the measured grid: Engineer corridor kit 360 cm pitch / 480 tall, Interiors room kit 670 cm pitch / 390 wall band under a cove (~6.5 m clear), shared door standard (360-wide slot, 166 x 275 leaf). `Docs/kit-mesh-bounds.csv` has every mesh's bounds and LOD0 tris.
+- Anything Airlock authors on top of a pack (levels, level instances, material instances, blueprints) lives outside the pack folders so it is versioned.
 
 ## Machine and toolchain (laptop "stack")
 - Engine: Launcher build at ``C:\Program Files\Epic Games\UE_5.8`` (5.8.2). Never modify engine files.
@@ -28,7 +33,7 @@ Airlock is the internal codename for a spaceship MMO built in Unreal Engine 5.8 
 ## Build / run / test (always from the project root)
 - ``Scripts\build-editor.bat`` - compile AirlockEditor. **Close the editor first (or press Ctrl+Alt+F11 inside it for Live Coding)**: an open editor holds the Live Coding lock and UBT refuses external builds.
 - ``Scripts\build-game.bat`` - standalone game target.
-- ``Scripts\run-editor.bat`` - open the project with the MCP server auto-started.
+- ``Scripts\run-editor.bat`` - open the project (the MCP server auto-starts on any launch via ``Config/DefaultEditorPerProjectUserSettings.ini``; the script also passes ``-ModelContextProtocolStartServer``).
 - ``Scripts\run-tests.bat [Filter]`` - headless automation tests (default filter ``Airlock``). Inside the editor, the MCP ``AutomationTestToolset`` runs them too.
 - ``Scripts\gen-projectfiles.bat`` - regenerate ``Airlock.slnx`` / VS Code workspace after adding source files (runs UBT through ``Build.bat`` so the bundled .NET is used).
 - Logs: ``Saved\Logs\Airlock.log``; UBT: ``%LOCALAPPDATA%\UnrealBuildTool\Log.txt``.
@@ -36,7 +41,8 @@ Airlock is the internal codename for a spaceship MMO built in Unreal Engine 5.8 
 ## Driving the editor (Unreal MCP)
 - Plugins ``ModelContextProtocol`` + ``AllToolsets`` are enabled (editor-only). ``.mcp.json`` points Claude Code at ``http://127.0.0.1:8000/mcp``.
 - The server is a meta-tool surface: ``list_toolsets`` -> ``describe_toolset`` -> ``call_tool(toolset_name, tool_name, arguments)``. Useful toolsets: ``editor_toolset.toolsets.scene.SceneTools`` (load level, add/find actors, save), ``...asset.AssetTools`` (exists/duplicate/save_assets), ``...object.ObjectTools`` (list/get/set properties - always ``list_properties`` first), ``EditorToolset.EditorAppToolset`` (PIE, camera, CaptureViewport), ``EditorToolset.LogsToolset``, ``AutomationTestToolset.AutomationTestToolset`` (DiscoverTests -> RunTests -> GetTestResults), ``ConfigSettingsToolset.ConfigSettingsToolset`` (Project/Project/Maps etc.).
-- Actor and asset type arguments are object paths (``/Script/Engine.PlayerStart``, ``/Script/Airlock.AirlockDoor``), not short names. ``load_level`` refuses to leave a dirty level - save first.
+- Actor and asset type arguments are object paths (``/Script/Engine.PlayerStart``, ``/Script/Airlock.AirlockDoor``), not short names. Asset object refs need the ``Package.Name`` form (``/Game/X/SM_Y.SM_Y``). ``load_level`` refuses when the current level *or the target* is dirty - ``save_assets`` first (a freshly ``duplicate``d level is unsaved until you do). ``delete`` of a loaded level only works after another level is current. ``editor_toolset.toolsets.programmatic.ProgrammaticToolset.execute_tool_script`` batches hundreds of calls in one round-trip (Python ``run()`` returning a dict; any inner tool error fails the whole call, so keep property reads per-class).
+- Renaming a C++ actor's root component orphans already-placed instances (their serialized ``RootComponent`` dangles, they snap to the origin and cannot be moved) - respawn them.
 - Loopback-only, no auth - never expose the port. Experimental: if the editor misbehaves after a plugin update, disable both plugins in ``Airlock.uproject`` and report it.
 
 ## Code conventions
