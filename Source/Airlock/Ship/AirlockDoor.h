@@ -7,15 +7,24 @@
 #include "AirlockDoor.generated.h"
 
 class UBoxComponent;
+class USceneComponent;
+class UStaticMesh;
 class UStaticMeshComponent;
 class UWorld;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAirlockTransitionRequested, APawn*, Pawn, FName, TargetSectionId);
 
 /**
- * The boundary between two ship sections (or between the hub and a docked ship). Walking into the
- * trigger on the server requests a transition to TargetSectionId; the actual level travel and the
- * loading-screen hand-off are wired in a later step. Refuses entry when the target has no life support left.
+ * The boundary between two ship sections (or between the hub and a docked ship).
+ *
+ * Visuals follow the kit standard (Docs/KitStandard.md): the actor sits on the walking surface at the centre of
+ * the opening. Doorway = SM_Doorway_Small_A (a 360-wide wall slot, offset -180 in Y so the opening is centred),
+ * two SM_Doorway_Small_A3 frames on either face of the wall, and a SM_Door_Small_A leaf that slides up 268 cm.
+ * Meshes are soft references so a clone without the Fab packs still gets a blocking primitive door.
+ *
+ * Behaviour: the server tracks pawns inside ProximityVolume and replicates bIsOpen; every machine animates the
+ * leaf from that flag. Crossing the thin TransitionVolume at the threshold (server only) fires
+ * OnTransitionRequested(Pawn, TargetSectionId); the level travel is wired in a later step.
  */
 UCLASS()
 class AIRLOCK_API AAirlockDoor : public AActor
@@ -33,16 +42,99 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Airlock")
 	TSoftObjectPtr<UWorld> TargetLevel;
 
-	/** Fired on the server when a pawn steps into the airlock. */
+	/** Fired on the server when a pawn crosses the threshold. */
 	UPROPERTY(BlueprintAssignable, Category = "Airlock")
 	FOnAirlockTransitionRequested OnTransitionRequested;
 
+	/** Kit meshes (soft: missing packs degrade to a primitive door instead of failing to load). */
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Kit")
+	TSoftObjectPtr<UStaticMesh> DoorwayMesh;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Kit")
+	TSoftObjectPtr<UStaticMesh> FrameMesh;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Kit")
+	TSoftObjectPtr<UStaticMesh> LeafMesh;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Kit")
+	TSoftObjectPtr<UStaticMesh> LeafGlassMesh;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Kit")
+	TSoftObjectPtr<UStaticMesh> LeafPanelMesh;
+
+	/** How far the leaf rises when open (kit: 268 cm). */
+	UPROPERTY(EditAnywhere, Category = "Airlock|Motion", meta = (ClampMin = "0"))
+	float OpenDistance = 268.f;
+
+	/** Seconds for a full open or close. */
+	UPROPERTY(EditAnywhere, Category = "Airlock|Motion", meta = (ClampMin = "0.05"))
+	float OpenTime = 0.6f;
+
+	UFUNCTION(BlueprintPure, Category = "Airlock")
+	bool IsOpen() const { return bIsOpen; }
+
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
-	TObjectPtr<UBoxComponent> TriggerVolume;
+	TObjectPtr<USceneComponent> DoorRoot;
+
+	/** Wide box either side of the wall; a pawn inside keeps the door open. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UBoxComponent> ProximityVolume;
+
+	/** Thin box in the wall plane; entering it requests the section transition. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UBoxComponent> TransitionVolume;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
-	TObjectPtr<UStaticMeshComponent> Frame;
+	TObjectPtr<UStaticMeshComponent> Doorway;
 
-	virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UStaticMeshComponent> FrameFront;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UStaticMeshComponent> FrameBack;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UStaticMeshComponent> Leaf;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UStaticMeshComponent> LeafGlass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UStaticMeshComponent> LeafPanel;
+
+	UPROPERTY(ReplicatedUsing = OnRep_IsOpen, VisibleInstanceOnly, Category = "Airlock")
+	bool bIsOpen = false;
+
+	UFUNCTION()
+	void OnRep_IsOpen();
+
+	UFUNCTION()
+	void OnProximityBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnProximityEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	UFUNCTION()
+	void OnTransitionBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	virtual void BeginPlay() override;
+
+private:
+	/** Server-side bookkeeping of pawns inside ProximityVolume (weak: a destroyed pawn must not hold the door open). */
+	TArray<TWeakObjectPtr<APawn>> PawnsNearby;
+
+	/** 0 = closed, 1 = fully open. Cosmetic; driven by bIsOpen on every machine. */
+	float SlideAlpha = 0.f;
+
+	FVector LeafClosedLocation = FVector::ZeroVector;
+	bool bUsingFallbackMeshes = false;
+
+	void ApplyMeshes();
+	void SetOpen(bool bOpen);
+	void UpdateLeaf();
 };
