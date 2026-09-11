@@ -31,3 +31,9 @@ Desktop.ini
 
 # Claude Code local state
 .claude/settings.local.json
+# --- Fab / third-party content packs: never committed (Fab Standard Licence forbids redistribution; also multi-GB).
+# --- A fresh clone re-claims them from Fab -> Window > Fab > Add to project. Inventory: THIRD_PARTY_ASSETS.md
+/Content/ModSci_Engineer/
+/Content/ModSci_EngiProps/
+/Content/ModSciInteriors/
+/Content/ThirdParty/
