@@ -28,7 +28,7 @@ Clear opening ≈ 166 wide × 275 tall. Player capsule is 84 wide × 192 tall, s
 
 **Airlock rule:** every section boundary is an `AAirlockDoor` (C++, replicated) wearing these meshes. The pack's `Door_A_BP`
 is never placed in a shipping map; its open/closed offsets are copied into `AAirlockDoor` so the look is identical.
-`AAirlockDoor` trigger volume: 120 × 200 × 300 cm centred on the opening (extent 60 × 100 × 150, z-centre 150).
+`AAirlockDoor` trigger volume: 440 × 160 × 300 cm centred on the opening (extent 220 × 80 × 150, z-centre 150) — matches the pack door's feel.
 
 ## Pivot and axis conventions (as authored in the packs)
 
@@ -55,5 +55,27 @@ Structural pieces are 1–5 k tris; the heaviest are `SM_Rail_Pad` 23 k, `SM_Cei
 | `LI_Room_S2_M` | Floor_C, WVA_MainWall ×2, WVD_Wall_C ×2 + caps, Ceiling_Main ×2 | 670 × 900 × 390 |
 | `LI_Room_S2_L` | 2 × 2 modules, Wall_Divider_A partitions | 1340 × 1800 × 390 |
 
-Assembled-map pitch (how the author actually tiles these in `Example_Stationary`) is verified by the demo-map survey
-in `agent\results\102-demo-survey.json`; if it disagrees with the numbers above, the survey wins and this file is updated.
+## Verified against the packs' own demo maps (`Example_Stationary`, 748 + 507 placed meshes)
+
+Survey: `agent\results\102-demo-survey.json` (every StaticMeshActor's mesh, location, rotation). Findings, with
+`z0` = the walking surface:
+
+- **Engineer pitch = 360 confirmed.** `SM_Floor_A1`, `SM_Ceiling_HB_A`, `SM_GlassFloor_A/_Divider`, `SM_Intersection_Beam`,
+  `SM_Floor_A2`, `SM_Floor_A_Pipes` all repeat at exactly 360 along the run. Junction cores are spaced 1580 apart in the
+  demo (author's layout choice, not a constraint).
+- Engineer vertical stack: walls and `Floor_A1` at `z0`; wall top `z0+480`; `Ceiling_HB_A` actor at **`z0+510`**
+  (its 31.8 cm body hangs below the origin, so the underside meets the wall top). The demo's main walkway is the
+  glass-floor system instead: `GlassFloor_A` at `z0-123` (top at `z0`) with walls dropped to `z0-90` and the gap
+  hidden by `Floor_A2` skirting. For Airlock corridors use the simpler `Floor_A1` stack; glass floors only in showpiece rooms.
+- **Interiors pitch = 670 confirmed** (335 half-module, 1340 double): `Floor_Main_Side*`, `Ceiling_Main_C/D/E/F`,
+  `Wall_Divider_A`, `PowerCells_*`, `Floor_Below`, `WVD_Wall_A/B`, `WVA_MainWall` all step by 670 / 335 / 1340.
+- Interiors vertical stack (tiered cove ceiling): main walls at `z0`, 390 tall; `Ceiling_Main_F` at `z0+390`,
+  `Ceiling_Main_E` at `z0+430` (rises to `z0+710`), `Ceiling_Main` / `_C` / `_D` at **`z0+710`** with underside ≈ `z0+650`.
+  So an S2 room is ~6.5 m clear, not 3.9 — the 390 is the wall band, the rest is cove. `Floor_Main_Side` at `z0-60`
+  (60 tall), `Floor_Main` at `z0-33`.
+- `SM_Doorway_Small_A` and its `_A3` frame sit directly on the walking surface (`z0`) in both sets.
+- `Door_A_BP` internals: leaf `SM_Door_Small_A` slides **up 268 cm** (`DoorClosed` z 0 → `DoorOpen` z 268); trigger box
+  is 447 × 146 × 540 cm centred 151 cm up (extent 32 × scale 6.98 / 2.29 / 8.43), i.e. it fires ~2.2 m either side of
+  the door along the walking axis; two `SteamDoor` emitters at y ±75, z 35; keypad = 18 tiny decals on the frame.
+  → `AAirlockDoor`: same meshes, leaf lift 268 cm over ~0.6 s, server-authoritative open state replicated to clients,
+  trigger extent (220, 80, 150) at z 150.
