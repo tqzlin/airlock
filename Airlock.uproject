@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
-	"Category": "Games",
+	"Category": "",
 	"Description": "Airlock - spaceship MMO MVP: station hub plus NPC-captained instanced voyages. Ships are server shards; sections join through airlock loading screens.",
 	"Modules": [
 		{
