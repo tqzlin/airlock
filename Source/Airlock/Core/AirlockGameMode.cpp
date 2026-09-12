@@ -269,6 +269,9 @@ void AAirlockGameMode::TickVoyageClock()
 	}
 	const double Elapsed = ActiveVoyage.DurationSeconds - (GS->VoyageEndServerTime - GS->GetServerWorldTimeSeconds());
 	const int32 DueEnd = FVoyageSchedule::FindNextUnfiredEntry(CaptainSchedule, NextCaptainEntry, Elapsed);
+	// Timer heap ties are unordered. A direct jump to docking must consume incidents while the voyage
+	// is still active, before the fixed docking caption and return path, whichever timer ran first.
+	if (Elapsed >= ActiveVoyage.DurationSeconds && IncidentDirector) { IncidentDirector->FireDueIncidents(); }
 	while (NextCaptainEntry < DueEnd)
 	{
 		const FText& Line = CaptainSchedule[NextCaptainEntry++].Line;

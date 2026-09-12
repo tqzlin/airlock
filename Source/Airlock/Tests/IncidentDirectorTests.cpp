@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Misc/AutomationTest.h"
 #include "Voyage/IncidentDirectorComponent.h"
+#include "Voyage/VoyageSubsystem.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
 #include "Engine/Engine.h"
@@ -25,6 +26,11 @@ struct FIncidentTestWorld
 		World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Values);
 		GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
 		World->SetGameInstance(NewObject<UGameInstance>(World));
+		World->GetGameInstance()->Init();
+		FVoyageSpec Spec;
+		Spec.Captain = TEXT("TestCaptain");
+		FGuid VoyageId;
+		World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->RequestVoyage(Spec, VoyageId);
 		FURL URL;
 		URL.AddOption(TEXT("game=/Script/Airlock.AirlockGameMode"));
 		World->SetGameMode(URL);
@@ -33,17 +39,12 @@ struct FIncidentTestWorld
 		State = World->GetGameState<AAirlockGameState>();
 		State->CurrentSectionId = TEXT("Hauler_Mk1");
 		World->BeginPlay();
-		State->bVoyageActive = true;
-		State->VoyageEndServerTime = State->GetServerWorldTimeSeconds() + 1200;
-		Director = NewObject<UIncidentDirectorComponent>(Mode);
-		Director->RegisterComponent();
-		FVoyageSpec Spec;
-		Spec.Captain = TEXT("TestCaptain");
-		Director->StartVoyage(Spec, *ShipLayouts::Find(TEXT("Hauler_Mk1")), 1);
+		Director = Mode->GetIncidentDirector();
 	}
 	~FIncidentTestWorld()
 	{
 		World->EndPlay(EEndPlayReason::Quit);
+		World->GetGameInstance()->Shutdown();
 		World->DestroyWorld(false);
 		GEngine->DestroyWorldContext(World);
 	}
@@ -145,6 +146,40 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIncidentTimerTest, "Airlock.Incidents.Director
 bool FIncidentTimerTest::RunTest(const FString& Parameters)
 {
 	ADD_LATENT_AUTOMATION_COMMAND(FIncidentTimerCommand(this));
+	return true;
+}
+
+namespace
+{
+class FIncidentDockingJumpCommand : public IAutomationLatentCommand
+{
+	FAutomationTestBase* Test;
+	FIncidentTestWorld Ship;
+	int32 Step = 0;
+public:
+	explicit FIncidentDockingJumpCommand(FAutomationTestBase* InTest) : Test(InTest) {}
+	virtual bool Update() override
+	{
+		Ship.World->GetTimerManager().Tick(.1f);
+		if (Step++ == 0)
+		{
+			Test->TestNotNull(TEXT("Booked ship creates the director"), Ship.Director);
+			Ship.Mode->SetVoyageSecondsRemaining(0.f);
+			return false;
+		}
+		Test->TestEqual(TEXT("Direct docking jump consumes every incident before ending voyage"), Ship.Director->GetNextEntry(), Ship.Director->GetSchedule().Num());
+		Test->TestFalse(TEXT("Clock ends voyage after catch-up"), Ship.State->bVoyageActive);
+		Test->TestFalse(TEXT("Docking clears the booking"), Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->HasPendingVoyage());
+		return true;
+	}
+};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIncidentDockingJumpTest, "Airlock.Incidents.DockingJumpConsumesBeforeReturn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FIncidentDockingJumpTest::RunTest(const FString& Parameters)
+{
+	ADD_LATENT_AUTOMATION_COMMAND(FIncidentDockingJumpCommand(this));
 	return true;
 }
 #endif
