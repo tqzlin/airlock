@@ -394,9 +394,10 @@ void AAirlockPlayerController::ServerIncident_Implementation(const FString& Type
 	if (Type.Equals(TEXT("CoolantLeak"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CoolantLeak; }
 	else if (Type.Equals(TEXT("PowerShort"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::PowerShort; }
 	else if (Type.Equals(TEXT("ModuleDamage"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::ModuleDamage; }
+	else if (Type.Equals(TEXT("CargoShift"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CargoShift; }
 	else
 	{
-		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s rejected: expected CoolantLeak, PowerShort or ModuleDamage"), *Type);
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s rejected: expected CoolantLeak, PowerShort, ModuleDamage or CargoShift"), *Type);
 		return;
 	}
 	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;

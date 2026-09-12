@@ -26,12 +26,14 @@ double UIncidentDirectorComponent::ElapsedSeconds() const
 	return GS ? Voyage.DurationSeconds - (GS->VoyageEndServerTime - GS->GetServerWorldTimeSeconds()) : 0.0;
 }
 
-void UIncidentDirectorComponent::StartVoyage(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount)
+void UIncidentDirectorComponent::StartVoyage(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount, const FCargoLayout* Cargo)
 {
 	if (bStarted || !GetOwner() || !GetOwner()->HasAuthority()) { return; }
 	Voyage = Spec;
 	ShipLayout = Layout;
-	Schedule = FIncidentSchedule::Build(Spec, Layout, CrewCount);
+	bHasCargoLayout = Cargo != nullptr;
+	if (Cargo) { CargoLayout = *Cargo; }
+	Schedule = FIncidentSchedule::Build(Spec, Layout, CrewCount, Cargo);
 	bStarted = true;
 	UE_LOG(LogAirlock, Log, TEXT("Incident director started: crew=%d entries=%d seed=%d"), CrewCount, Schedule.Num(), Spec.Seed);
 	Reschedule();
@@ -69,7 +71,13 @@ void UIncidentDirectorComponent::FireDueIncidents()
 FString UIncidentDirectorComponent::UnavailableReason(EIncidentType Type, FName Target) const
 {
 	const AAirlockGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr;
-	if (!GS || !FIncidentSchedule::Targets(ShipLayout, Type).Contains(Target)) { return TEXT("missing or incompatible target"); }
+	if (Type == EIncidentType::CargoShift && Target.IsNone()) { return TEXT("clamp empty"); }
+	if (!GS || !FIncidentSchedule::Targets(ShipLayout, Type, bHasCargoLayout ? &CargoLayout : nullptr).Contains(Target)) { return TEXT("missing or incompatible target"); }
+	if (Type == EIncidentType::CargoShift)
+	{
+		return GS->Cargo.ContainsByPredicate([Target](const auto& Crate) { return Crate.SlotId == Target && Crate.State == ECargoState::Secured; })
+			? FString() : TEXT("clamp empty");
+	}
 	if (Type == EIncidentType::ModuleDamage)
 	{
 		const FShipModuleState* Module = GS->ShipModules.FindByPredicate([Target](const FShipModuleState& M) { return M.Id == Target; });
@@ -96,9 +104,10 @@ bool UIncidentDirectorComponent::ApplyIncident(const FIncidentSpec& Incident)
 	bool bApplied = false;
 	if (Reason.IsEmpty())
 	{
-		bApplied = Incident.Type == EIncidentType::ModuleDamage ? GM->ShipDamageModule(Incident.TargetId, Incident.Magnitude)
+		bApplied = Incident.Type == EIncidentType::CargoShift ? GM->CargoRelease(Incident.TargetId)
+			: Incident.Type == EIncidentType::ModuleDamage ? GM->ShipDamageModule(Incident.TargetId, Incident.Magnitude)
 			: GM->ShipSetLineFault(Incident.TargetId, Incident.Type == EIncidentType::CoolantLeak ? EShipLineFault::Leak : EShipLineFault::Short);
-		if (!bApplied) { Reason = TEXT("graph rejected target"); }
+		if (!bApplied) { Reason = Incident.Type == EIncidentType::CargoShift ? TEXT("clamp empty") : TEXT("graph rejected target"); }
 	}
 	UE_LOG(LogAirlock, Log, TEXT("Incident %s %s (%.2f) at %.3fs elapsed=%.3fs%s"),
 		FIncidentSchedule::TypeName(Incident.Type), *Incident.TargetId.ToString(), Incident.Magnitude, Incident.AtSeconds,
@@ -118,7 +127,11 @@ bool UIncidentDirectorComponent::FireNow(EIncidentType Type, FName Target, float
 {
 	if (Target.IsNone())
 	{
-		for (FName Candidate : FIncidentSchedule::Targets(ShipLayout, Type))
+		if (Type == EIncidentType::CargoShift)
+		{
+			if (const auto* GM = Cast<AAirlockGameMode>(GetOwner())) { Target = GM->CargoFirstFilledClamp(); }
+		}
+		else for (FName Candidate : FIncidentSchedule::Targets(ShipLayout, Type))
 		{
 			if (UnavailableReason(Type, Candidate).IsEmpty()) { Target = Candidate; break; }
 		}

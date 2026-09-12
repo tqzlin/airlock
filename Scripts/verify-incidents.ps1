@@ -121,7 +121,7 @@ try {
     $jumpAt = $script:LastCommandAt
     $last = $schedule[3]
     $null = Wait-IncidentProofLine "Incident $($last.Type) $($last.Target) .*at $([regex]::Escape(('{0:F3}' -f $last.At)))s" 15 $jumpAt
-    $fired = @(Get-IncidentProofLines 'Incident (CoolantLeak|PowerShort|ModuleDamage) ' $jumpAt)
+    $fired = @(Get-IncidentProofLines 'Incident (CoolantLeak|PowerShort|ModuleDamage|CargoShift) ' $jumpAt)
     if ($fired.Count -ne 3) { throw "Expected three catch-up events, found $($fired.Count)" }
     $pair = $fired | Select-Object -Last 2
     $pairStamps = @($pair | ForEach-Object { [DateTime]::ParseExact($_.Substring(1,23), 'yyyy.MM.dd-HH.mm.ss:fff', [Globalization.CultureInfo]::InvariantCulture) })
@@ -135,7 +135,7 @@ try {
     Send-IncidentCommand 'AirlockVoyageClock 70'
     $repeatAt = $script:LastCommandAt
     Start-Sleep -Seconds 1
-    if (@(Get-IncidentProofLines 'Incident (CoolantLeak|PowerShort|ModuleDamage) ' $repeatAt).Count -ne 0) { throw 'A clock rewind replayed incidents' }
+    if (@(Get-IncidentProofLines 'Incident (CoolantLeak|PowerShort|ModuleDamage|CargoShift) ' $repeatAt).Count -ne 0) { throw 'A clock rewind replayed incidents' }
     Send-IncidentCommand 'AirlockIncidentSchedule'
     $null = Wait-IncidentProofLine 'Incident schedule: 4 entries next=4' 5 $script:LastCommandAt
     # Optional console arguments and missing/already-faulted targets use the same director path.

@@ -8,6 +8,8 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "Misc/OutputDevice.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -180,6 +182,40 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIncidentDockingJumpTest, "Airlock.Incidents.Do
 bool FIncidentDockingJumpTest::RunTest(const FString& Parameters)
 {
 	ADD_LATENT_AUTOMATION_COMMAND(FIncidentDockingJumpCommand(this));
+	return true;
+}
+
+namespace
+{
+class FCargoIncidentLogCapture : public FOutputDevice
+{
+public:
+	FString Lines;
+	FCargoIncidentLogCapture() { GLog->AddOutputDevice(this); }
+	~FCargoIncidentLogCapture() { GLog->RemoveOutputDevice(this); }
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
+	{
+		if (Category == TEXT("LogAirlock")) { Lines += V; Lines += TEXT("\n"); }
+	}
+};
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoIncidentApplyTest, "Airlock.Cargo.DirectorReleasesFilledClampAndSkipsEmpty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoIncidentApplyTest::RunTest(const FString& Parameters)
+{
+	FIncidentTestWorld Ship;
+	Ship.Mode->CargoPickUp(TEXT("C1")); Ship.Mode->CargoPlace(TEXT("C1"), TEXT("Clamp_2"));
+	FCargoIncidentLogCapture Capture;
+	TestTrue(TEXT("Shift releases even nonvolatile crate"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("Clamp_2")));
+	TestTrue(TEXT("Crate now loose and slot cleared"), Ship.State->Cargo[0].State == ECargoState::Loose && Ship.State->Cargo[0].SlotId.IsNone());
+	TestFalse(TEXT("Empty clamp skipped"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("Clamp_2")));
+	TestTrue(TEXT("Empty clamp reason logged"), Capture.Lines.Contains(TEXT("skipped: clamp empty")));
+	TestTrue(TEXT("Shift magnitude unused"), Capture.Lines.Contains(TEXT("Incident CargoShift Clamp_2 (0.00)")));
+	TestFalse(TEXT("Rack never shifts"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("ColdRack")));
+	Ship.Mode->CargoPickUp(TEXT("C2")); Ship.Mode->CargoPlace(TEXT("C2"), TEXT("Clamp_3"));
+	TestTrue(TEXT("Omitted target finds filled clamp"), Ship.Director->FireNow(EIncidentType::CargoShift));
+	TestTrue(TEXT("Filled target released"), Ship.State->Cargo[1].State == ECargoState::Loose);
+	TestFalse(TEXT("No filled clamp skipped"), Ship.Director->FireNow(EIncidentType::CargoShift));
 	return true;
 }
 #endif

@@ -136,7 +136,7 @@ void AAirlockGameMode::BeginPlay()
 			}
 			IncidentDirector = NewObject<UIncidentDirectorComponent>(this, TEXT("IncidentDirector"));
 			IncidentDirector->RegisterComponent();
-			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount));
+			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount), CargoLayouts::Find(GS->CurrentSectionId));
 		}
 		ScheduleNextVoyageEvent();
 	}
