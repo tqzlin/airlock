@@ -61,12 +61,14 @@ bool FIncidentWindowTest::RunTest(const FString& Parameters)
 	{
 		for (const int32 Crew : { 1, 4, 9 })
 		{
-			const auto Entries = FIncidentSchedule::Build(IncidentVoyage(Seed), Layout, Crew);
+			for (const float Duration : { 900.f, 1200.f, 1800.f })
+			{
+			const auto Entries = FIncidentSchedule::Build(IncidentVoyage(Seed, Duration), Layout, Crew);
 			if (!TestTrue(TEXT("Schedule exists"), Entries.Num() >= 4)) { return false; }
 			TestEqual(TEXT("Teaching incident at calm deadline"), Entries[0].AtSeconds, FIncidentSchedule::CalmSeconds);
 			for (int32 I = 0; I < Entries.Num(); ++I)
 			{
-				TestTrue(TEXT("Inside calm/docking window"), Entries[I].AtSeconds >= FIncidentSchedule::CalmSeconds && Entries[I].AtSeconds <= 1200.f - FIncidentSchedule::DockSeconds);
+				TestTrue(TEXT("Inside calm/docking window"), Entries[I].AtSeconds >= FIncidentSchedule::CalmSeconds && Entries[I].AtSeconds <= Duration - FIncidentSchedule::DockSeconds);
 				if (I > 0)
 				{
 					const float Gap = Entries[I].AtSeconds - Entries[I - 1].AtSeconds;
@@ -75,7 +77,8 @@ bool FIncidentWindowTest::RunTest(const FString& Parameters)
 			}
 			const float PairGap = Entries.Last().AtSeconds - Entries[Entries.Num() - 2].AtSeconds;
 			TestTrue(TEXT("Climax gap at most 20 seconds"), PairGap <= FIncidentSchedule::ClimaxMaxGapSeconds + KINDA_SMALL_NUMBER);
-			TestTrue(TEXT("Both climax entries at 78..85 percent"), Entries[Entries.Num() - 2].AtSeconds >= 1200.f * FIncidentSchedule::ClimaxStartFraction && Entries.Last().AtSeconds <= 1200.f * FIncidentSchedule::ClimaxEndFraction);
+			TestTrue(TEXT("Both climax entries at 78..85 percent"), Entries[Entries.Num() - 2].AtSeconds >= Duration * FIncidentSchedule::ClimaxStartFraction && Entries.Last().AtSeconds <= Duration * FIncidentSchedule::ClimaxEndFraction);
+			}
 		}
 	}
 	return true;

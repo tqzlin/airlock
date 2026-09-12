@@ -75,7 +75,7 @@ TArray<FIncidentSpec> FIncidentSchedule::Build(const FVoyageSpec& Spec, const FS
 		: FMath::Clamp(Duration * ClimaxStartFraction, Start, End);
 	const float PairMax = bShort ? Start + Window * (ClimaxEndFraction * ReferenceDuration - CalmSeconds) / ReferenceWindow
 		: FMath::Clamp(Duration * ClimaxEndFraction, PairMin, End);
-	const float PairGap = FMath::Min(Random.FRandRange(ClimaxMinGapSeconds, ClimaxMaxGapSeconds) * Scale, PairMax - PairMin);
+	const float PairGap = FMath::Min(Random.FRandRange(ClimaxMinGapSeconds, ClimaxMaxGapSeconds) * (bShort ? Scale : 1.f), PairMax - PairMin);
 	const float PairStart = Random.FRandRange(PairMin, PairMax - PairGap);
 	const float Gap = FMath::Min(MinGapSeconds * (bShort ? Scale : 1.f), (PairStart - Start) / (Count - 2));
 	const float Slack = FMath::Max(0.f, PairStart - Start - Gap * (Count - 2));
