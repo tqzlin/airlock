@@ -10,6 +10,7 @@
 class UInputAction;
 class UInputMappingContext;
 class UVoyageBoardWidget;
+class UCaptainLineWidget;
 
 /**
  * Player controller that owns the Enhanced Input setup. The mapping context and actions are built
@@ -66,6 +67,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientEndTransition();
 
+	/** Server-timed captain transmission, displayed only on the owning client. */
+	UFUNCTION(Client, Reliable)
+	void ClientCaptainSays(const FText& Line);
+
 	// --- Console helpers (Exec: callable from the ~ console; used by the agent's PIE smoke tests) ---
 
 	/** Books today's voyage by type index (0 mining, 1 pirates, 2 derelict) without the UI. */
@@ -84,14 +89,25 @@ public:
 	UFUNCTION(Exec)
 	void AirlockWhere();
 
+	/** Moves the active voyage clock on the server (clamped to its original duration). */
+	UFUNCTION(Exec)
+	void AirlockVoyageClock(float SecondsRemaining);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetVoyageClock(float SecondsRemaining);
+
 	UFUNCTION(Server, Reliable)
 	void ServerWarp(FVector Location);
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVoyageBoardWidget> BoardWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCaptainLineWidget> CaptainWidget;
 
 	FTimerHandle ArrivalFadeTimer;
 

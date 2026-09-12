@@ -12,6 +12,11 @@ AAirlockGameState::AAirlockGameState()
 	bVoyageBooked = false;
 }
 
+double AAirlockGameState::GetVoyageSecondsRemaining() const
+{
+	return bVoyageActive ? FMath::Max(0.0, VoyageEndServerTime - GetServerWorldTimeSeconds()) : 0.0;
+}
+
 void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -21,4 +26,6 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, SectionPopulation);
 	DOREPLIFETIME(AAirlockGameState, DaySeed);
 	DOREPLIFETIME(AAirlockGameState, bVoyageBooked);
+	DOREPLIFETIME(AAirlockGameState, VoyageEndServerTime);
+	DOREPLIFETIME(AAirlockGameState, bVoyageActive);
 }

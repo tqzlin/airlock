@@ -4,6 +4,7 @@
 #include "Airlock.h"
 #include "Blueprint/UserWidget.h"
 #include "Core/AirlockGameInstance.h"
+#include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -11,6 +12,7 @@
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
+#include "UI/CaptainLineWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -95,6 +97,34 @@ void AAirlockPlayerController::BeginPlay()
 			GetWorldTimerManager().SetTimer(ArrivalFadeTimer, this, &AAirlockPlayerController::ClientEndTransition, 1.0f, false);
 		}
 	}
+}
+
+void AAirlockPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (CaptainWidget)
+	{
+		CaptainWidget->RemoveFromParent();
+		CaptainWidget = nullptr;
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void AAirlockPlayerController::ClientCaptainSays_Implementation(const FText& Line)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	if (!CaptainWidget)
+	{
+		CaptainWidget = CreateWidget<UCaptainLineWidget>(this, UCaptainLineWidget::StaticClass());
+		if (!CaptainWidget)
+		{
+			return;
+		}
+		CaptainWidget->AddToViewport(5);
+	}
+	CaptainWidget->ShowLine(Line);
 }
 
 void AAirlockPlayerController::ClientBeginTransition_Implementation(const FText& Title, const FText& Subtitle)
@@ -242,6 +272,19 @@ void AAirlockPlayerController::AirlockWhere()
 		GetWorld() ? *GetWorld()->GetMapName() : TEXT("?"), P ? *P->GetName() : TEXT("none"),
 		P ? *P->GetActorLocation().ToString() : TEXT("-"), P ? *P->GetActorRotation().ToString() : TEXT("-"),
 		*ViewLoc.ToString(), *ViewRot.ToString());
+}
+
+void AAirlockPlayerController::AirlockVoyageClock(float SecondsRemaining)
+{
+	ServerSetVoyageClock(SecondsRemaining);
+}
+
+void AAirlockPlayerController::ServerSetVoyageClock_Implementation(float SecondsRemaining)
+{
+	if (AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
+	{
+		GM->SetVoyageSecondsRemaining(SecondsRemaining);
+	}
 }
 
 void AAirlockPlayerController::ServerWarp_Implementation(FVector Location)
