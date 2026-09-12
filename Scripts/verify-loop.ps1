@@ -10,7 +10,7 @@ function Compact($t) { ($t -replace '\s+', ' ') }
 function Short($t, $n) { $c = Compact $t; $c.Substring(0, [math]::Min($n, $c.Length)) }
 function Write-Say($t) { Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $t" }
 
-try { Mcp-Init } catch { Write-Say "MCP server not reachable on 127.0.0.1:8000 - open the editor first (Scripts\run-editor.bat)"; exit 2 }
+try { Mcp-Init } catch { Write-Say "MCP server not reachable on 127.0.0.1:$($script:McpPort) - open the editor first (Scripts\run-editor.bat)"; exit 2 }
 if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { Write-Say 'PIE already running - stopping it first'; $null = Mcp-Call $TS_App 'StopPIE' @{}; Start-Sleep -Seconds 4 }
 $lvl = Mcp-Call $TS_Scene 'get_current_level' @{}
 if ($lvl.text -notmatch 'StationHub') {

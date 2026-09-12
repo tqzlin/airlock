@@ -1,9 +1,10 @@
 # Scripts\lib\mcp.ps1 -- dot-source this (PowerShell 5.1). Minimal Streamable-HTTP MCP client for the Unreal MCP server
-# that the editor starts on 127.0.0.1:8000. Repo copy of the agent runner's library; captures land in Saved\AgentCaptures.
+# that the editor starts on 127.0.0.1:8000 (or $env:AIRLOCK_MCP_PORT). Repo copy of the agent runner's library; captures land in Saved\AgentCaptures.
 #   Mcp-Init                              -> initialize + initialized notification (sets session id)
 #   Mcp-Call  <toolset> <tool> <hashtable> -> returns [pscustomobject]{ ok, text, json, images, raw }
 #   Mcp-Text  <toolset> <tool> <hashtable> -> returns text (throws on error)
-$script:McpBase = 'http://127.0.0.1:8000/mcp'
+$script:McpPort = if ($env:AIRLOCK_MCP_PORT) { [int]$env:AIRLOCK_MCP_PORT } else { 8000 }   # a second editor (worktree) runs on its own port
+$script:McpBase = "http://127.0.0.1:$($script:McpPort)/mcp"
 $script:McpHdr  = @{ Accept = 'application/json, text/event-stream' }
 $script:McpId   = 1
 $script:McpImgDir = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Saved\AgentCaptures'
