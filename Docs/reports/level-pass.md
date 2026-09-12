@@ -59,7 +59,37 @@ future engineering bay, not something to fix in this pass.
 - `Scripts\run-tests.bat Airlock`: **38/38** (34 existing + `Airlock.Ship.ControlStationSpawnsFromLayout`,
   `Airlock.Ship.ControlStationSitAndStand`, `Airlock.Ship.ControlStationIsExclusive`,
   `Airlock.Ship.ControlBoardListsEveryModuleAndLine`).
-- `Scripts\verify-level-pass.ps1`: see the tail below (filled in after the run).
+- `Scripts\verify-level-pass.ps1` (worktree editor, port 8001): **exit 0 in 152 s**. Tail:
+
+```text
+> AirlockHold Coolant_2
+LogAirlock: Hold Coolant_2 complete by AirlockCharacter_0
+LogAirlock: Line Coolant_2 fault=None
+> AirlockFault Power_2 Short  ->  Line Power_2 fault=Short
+> AirlockHold Power_2  ->  Hold Power_2 complete by AirlockCharacter_0, Line Power_2 fault=None
+> AirlockSit Bridge (from the door)  ->  Seat Bridge rejected: out of range (342 cm, reach 312 cm)
+> AirlockWarp 1760 240 130 ; AirlockSit Bridge  ->  Seat Bridge taken by AirlockCharacter_0
+> AirlockWhere  ->  Where: map=UEDPIE_0_Hauler_Mk1 pawn=AirlockCharacter_0 at X=1930.000 Y=240.000 Z=124.000
+> AirlockStand  ->  Seat Bridge released by AirlockCharacter_0
+> AirlockWhere  ->  Where: ... at X=1790.000 Y=240.000 Z=118.313
+> AirlockWarp -7015 1560 116  ->  Arrival spawn for AirlockPlayerController_0: PlayerStart_0 at X=-5640.001
+LogAirlock: Voyage E4AF24EC485132EFD0A7F9AB03BCF9BC complete
+LEVEL OK: hold -> engineering (2 lines repaired) -> corridor (2 lines repaired) -> galley -> bridge seat, board, stand -> hub PlayerStart
+```
+
+  Earlier in the same run `Coolant_1` (leak, 3 s) and `Power_1` (short, 4 s) were repaired from the engineering
+  walkway the same way. Captures under `Saved\AgentCaptures\LevelPass\` (ignored; rerun the script to recreate):
+  `hold-cargo-clamps`, `engineering-overview` (all four engineering labels readable from the corridor's north end),
+  `Coolant_1-leak` (task board `Tape leak - Coolant_1`), `Power_1-short`, `Coolant_2-leak`, `Power_2-short`,
+  `galley-stub`, `bridge-station-free` (`CONTROL STATION / Captain Okonkwo has the conn` over the terminal),
+  `bridge-control-board` (the board: 7 modules with live conditions, CoolantLoop at 88 % after the leaks, and 4 lines),
+  `bridge-station-released`.
+- `verify-loop.ps1` (**exit 0, 55 s**, `LOOP OK`), `verify-ship-graph.ps1` (**exit 0, 72 s**, `GRAPH OK`) and
+  `verify-incidents.ps1` (**exit 0, 59 s**, `INCIDENTS OK`), rerun on this branch after the two later scripts' hard-coded
+  line spots were moved to the new rooms (`Coolant_1` is repaired from (-1300, 430) in engineering, `Coolant_2` from
+  (-3320, 1500) in the corridor). Everything ran on the worktree editor while Astra's M3-4 editor was open on port 8000.
+- Reproduce: open the editor on StationHub (`Scripts\run-editor.bat`, or in the worktree with `AIRLOCK_MCP_PORT=8001`),
+  then `powershell -ExecutionPolicy Bypass -File Scripts\verify-level-pass.ps1`; `Scripts\run-tests.bat Airlock`.
 
 ## Open questions / follow-ups
 
