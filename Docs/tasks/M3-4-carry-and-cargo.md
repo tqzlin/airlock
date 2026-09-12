@@ -280,3 +280,17 @@ board tells you how your last run went - the Deep Rock hook, one task early.
 `Scripts\build-editor.bat` clean; `Scripts\run-tests.bat Airlock` all green (34 existing + the new ones);
 `Scripts\verify-loop.ps1`, `verify-ship-graph.ps1`, `verify-incidents.ps1` and `verify-cargo.ps1` exit 0; captures
 show the loose-crate rows, the heating row, a vented crate steaming and the hub board's last-run line.
+
+## Decisions recorded at review (Claude, 2026-09-12)
+- **Positions**: the probed table in `Ship/CargoLayouts.cpp` replaces the proposed one - Clamp_1 at X -6200, Clamp_3 at
+  -5200, the ColdRack at (-5000, 1300) yaw 90 (the shelf's corner pivot would otherwise reach the Y 1560 walkway), C1 at
+  -6100, C3 at -5300, C4 at -5000; every centre settles at feet Z -64.85 on the -65 floor (`verify-cargo.ps1
+  -ProbePositions`). The clamp controller module at (-6300, 1900) is clear of them.
+- **Seat and carry on one character** (the level pass landed first): the merge keeps both verbs and adds two guards
+  outside this brief - sitting is refused with a crate in hand (`Seat <Id> rejected: hands full`), picking up is
+  refused while seated (`PickUp rejected: seated`).
+- **The checkpoint's failing test** (`Airlock.Cargo.DirectorReleasesFilledClampAndSkipsEmpty`) raced the engine's
+  dedicated log thread; the capture device is now unbuffered and the test flushes `GLog` first. The director was right.
+- **The proof's calm check** counted the console echoes of `AirlockIncident`; it now anchors on the director's own
+  `: Incident <Type> ` line. Nothing else in the proof changed.
+- Crew scaling of the manifest, proximity heating and the CargoClamps-module link stay deferred as written above.

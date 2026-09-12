@@ -42,3 +42,5 @@ Desktop.ini
 /Content/SD_Art/
 /Content/Construction_VOL2/
 /Content/Warehouse_Storage/
+# Codex CLI session state in a checkout (Astra runs)
+.codex/

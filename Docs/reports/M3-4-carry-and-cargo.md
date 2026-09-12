@@ -253,3 +253,58 @@ update this report to actual final proof results/captures, and commit. Do not me
 - The failed log-capture assertion, unrun full PIE proofs, UI framing/steam visibility and final clean-map check
   are open work. Separate network-client verification remains outside this solo MVP proof.
 - `.codex/` was already untracked and has been left alone. The branch's implementation is committed locally.
+
+## Reviewer verification (Claude, 2026-09-12, after the checkpoint)
+
+Astra's run ended at the checkpoint above (its Computer Use tool reported a physical Escape and stopped). The reviewer
+finished the acceptance from Claude Code in the same checkout (`Airlock\`, editor on port 8000) once the Codex process
+had exited. Everything below ran on the branch after `main` (the level pass) was merged in.
+
+- **Merge with the level pass** (`05d32a6`): conflicts in `AirlockCharacter.*` and `AirlockPlayerController.h` only.
+  One character keeps both verbs: `Interact` stands up first when seated, then traces through `TraceInteractTarget`
+  (ignoring the carried crate), then places / puts down / interacts. Two guards were added at the join, outside the
+  brief: sitting is refused with a crate in hand (`Seat <Id> rejected: hands full`) and picking up is refused while
+  seated (`PickUp rejected: seated`).
+- **The failing test** `Airlock.Cargo.DirectorReleasesFilledClampAndSkipsEmpty` (`167cc6f`): not a director bug. The
+  capture device was a buffered `FOutputDevice`, so with the engine's dedicated log thread the second line was still
+  queued when the test read it. The device now returns `true` from `CanBeUsedOnAnyThread()` (mutex-guarded) and the
+  test calls `GLog->Flush()` before asserting.
+- **The proof script** (`9b3f190`): its calm-voyage check counted every fresh line containing `Incident <Type> `, which
+  also matched the two console echoes of the manual `AirlockIncident CargoShift Clamp_2` (`AgentConsole: ...` and
+  `Console: ... accepted=1`), so the first run threw "A scheduled incident fired" after every gameplay step had
+  passed. It now anchors on the director's own `: Incident <Type> ` line.
+- **Build**: `Scripts\build-editor.bat` on the merged tree: Succeeded (UBA, 14 s incremental).
+- **Tests**: `Scripts\run-tests.bat Airlock` headless: **56 / 56 passed** (34 + 4 level pass + 18 cargo; report
+  `Saved\Automation\Report\index.json`, 1.3 s of test time).
+- **Proofs** on the merged binary, editor on StationHub, both maps clean, one at a time:
+
+| Proof | Result | Time |
+|---|---|---|
+| `verify-loop.ps1` | `LOOP OK` | 54 s |
+| `verify-ship-graph.ps1` | `GRAPH OK` | 71 s |
+| `verify-incidents.ps1` | `INCIDENTS OK` | 60 s |
+| `verify-level-pass.ps1` | `LEVEL OK` | 151 s |
+| `verify-cargo.ps1` | `CARGO OK` | 89 s |
+| `verify-cargo.ps1 -ProbePositions` | `CARGO POSITIONS OK` (all eight at feet Z -64.85) | 45 s |
+
+  Tail of the cargo proof:
+
+```text
+> AirlockTally            -> Tally now: 2/4 crates intact, 1 vented, 1 loose, hull 100.00%, pay 400
+> AirlockVoyageClock 1200 ; AirlockShipStatus -> Ship Galley Nominal cond=100.00 (7 modules at 100)
+> AirlockWarp -7015 1560 116 -> Voyage result: 2/4 crates intact, 1 vented, 1 loose, hull 100.00%, pay 400
+                              Arrival spawn for AirlockPlayerController_0: PlayerStart_0 at X=-5640.001
+> AirlockCargoStatus      -> Cargo empty
+> AirlockBoard            -> Voyage board opened (day seed 20708)
+CARGO OK: secure two -> shift and cool C2 -> vent C4 -> 2/4 intact, pay 400 -> hub last run
+```
+
+- **Captures reviewed** (`Saved\AgentCaptures\M3-4\`, copies in `agent\results\images\astra-m3-4\`):
+  `loose-crate-tasks` (board: four `Secure crate` rows; `C1  Loose`, `C2  Loose  0C`, empty pads and the rack labelled),
+  `carrying-C1` (the case hangs at the carry socket, the prompt `Carrying C1 - E: put down, or place in a clamp / the
+  cold rack` bottom-centre, C1 gone from the board), `hot-crate-task` (`Cool crate C2 - 60C` on top, `C2  Loose  60C`
+  under a red heat light), `vented-C4` (`C4  Vented  100C`, full red light, only `Secure crate C3` left on the board),
+  `hub-last-run` (`Last run: 2/4 crates intact - hull 100% - pay 400 cr` under DEPARTURES).
+- **Legibility notes for M3-6**: the carried crate's label sits 80 cm from the camera and fills the view; the vent
+  steam is faint next to the red light (the light carries it); crate and pad labels face -X only.
+- Editor left on StationHub, no PIE, both maps clean. Merged into `main` with `--no-ff` after this section was added.
