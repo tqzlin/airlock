@@ -137,7 +137,7 @@ void UIncidentDirectorComponent::LogSchedule() const
 	for (int32 I = 0; I < Schedule.Num(); ++I)
 	{
 		const FIncidentSpec& Entry = Schedule[I];
-		UE_LOG(LogAirlock, Log, TEXT("Incident schedule [%d] at %.3fs %s %s (%.2f)"), I, Entry.AtSeconds,
+		UE_LOG(LogAirlock, Log, TEXT("Incident schedule entry=%d at %.3fs %s %s (%.2f)"), I, Entry.AtSeconds,
 			FIncidentSchedule::TypeName(Entry.Type), *Entry.TargetId.ToString(), Entry.Magnitude);
 	}
 }
