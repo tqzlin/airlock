@@ -1,4 +1,5 @@
-# Scripts\verify-loop.ps1 -- the PIE proof of the MVP loop. Needs the editor open on StationHub with the MCP port up.
+# Scripts\verify-loop.ps1 -- the PIE proof of the MVP loop. Needs the editor open on StationHub with the MCP port up
+# (the editor may be behind other windows or minimized: commands go through Saved\AgentConsole, not the Slate console).
 #   powershell -ExecutionPolicy Bypass -File Scripts\verify-loop.ps1
 # Spawns at the hub PlayerStart, books a voyage, crosses Dock B, expects to arrive at the Hauler's PlayerStart, walks
 # back out through Airlock_ToHub, expects to arrive at the hub PlayerStart. Exit 0 only if both arrivals landed where
@@ -19,27 +20,18 @@ if ($lvl.text -notmatch 'StationHub') {
     Start-Sleep -Seconds 5
 }
 
-# dismiss the Message Log that pops on PIE, find the console box
-$w = Mcp-Call $TS_Slate 'Windows' @{ action = 'list'; index = -1 }
-try { $wins = ($w.text | ConvertFrom-Json).returnValue; if ($wins -is [string]) { $wins = $wins | ConvertFrom-Json }; foreach ($x in $wins) { if ($x.title -match 'Message Log') { $null = Mcp-Call $TS_Slate 'Windows' @{ action = 'close'; index = $x.index } } } } catch {}
-$snap = Mcp-Call $TS_Slate 'Snapshot' @{ ref = ''; maxDepth = 40; bIncludeSourceLocations = $false }
-$consoleRef = $null
-$lines = (($snap.text | ConvertFrom-Json).returnValue) -split "`n"
-for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match 'text "Cmd"') { for ($k = $i + 1; $k -lt [math]::Min($i + 6, $lines.Count); $k++) { if ($lines[$k] -match 'textbox.*\[ref=([A-Za-z0-9_]+)\]') { $consoleRef = $matches[1]; break } }; break } }
-if (-not $consoleRef) {
-    # fallback: any textbox within 5 lines after a text widget labelled Cmd / Python / Console
-    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match 'text "(Cmd|Python|Console|Enter Console Command)') { for ($k = $i + 1; $k -lt [math]::Min($i + 6, $lines.Count); $k++) { if ($lines[$k] -match 'textbox.*\[ref=([A-Za-z0-9_]+)\]') { $consoleRef = $matches[1]; break } }; if ($consoleRef) { break } } }
-}
-if (-not $consoleRef) {
-    Say 'could not find the editor console box in the Slate snapshot; lines mentioning Cmd/Console/textbox:'
-    $lines | Where-Object { $_ -match 'Cmd|Console|textbox' } | Select-Object -First 12 | ForEach-Object { Say "    $(Short $_ 160)" }
-    Say "  snapshot ok=$($snap.ok) length=$($snap.text.Length)"
-    exit 2
-}
+# dismiss the Message Log that pops on PIE (best effort; Slate may list nothing while the editor is minimized)
+try { $w = Mcp-Call $TS_Slate 'Windows' @{ action = 'list'; index = -1 }; $wins = ($w.text | ConvertFrom-Json).returnValue; if ($wins -is [string]) { $wins = $wins | ConvertFrom-Json }; foreach ($x in $wins) { if ($x.title -match 'Message Log') { $null = Mcp-Call $TS_Slate 'Windows' @{ action = 'close'; index = $x.index } } } } catch {}
+# console commands go through the AgentConsole file (UAgentConsoleSubsystem polls it every 0.5 s in PIE) - no Slate,
+# no keyboard focus, works with the editor behind other windows
+$script:CmdFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'Saved\AgentConsole\commands.txt'
+New-Item -ItemType Directory -Force -Path (Split-Path $script:CmdFile -Parent) | Out-Null
+if (Test-Path $script:CmdFile) { Remove-Item $script:CmdFile -Force }
 function Console($cmd) {
-    $t = Mcp-Call $TS_Slate 'Type' @{ ref = $consoleRef; text = $cmd; submit = $true }
-    if ($t.text -notmatch 'true') { Start-Sleep -Milliseconds 500; $t = Mcp-Call $TS_Slate 'Type' @{ ref = $consoleRef; text = $cmd; submit = $true } }
-    Say "> $cmd"
+    [IO.File]::WriteAllText($script:CmdFile, "$cmd`r`n", [Text.Encoding]::ASCII)
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline -and (Test-Path $script:CmdFile)) { Start-Sleep -Milliseconds 250 }
+    if (Test-Path $script:CmdFile) { Say "> $cmd  (NOT consumed within 8 s - is PIE running with the Airlock GameInstance?)" } else { Say "> $cmd" }
 }
 # Only log lines stamped after the run started count (the editor log keeps earlier PIE sessions). UE stamps in UTC.
 $script:RunStart = [DateTime]::UtcNow.AddSeconds(-5)
