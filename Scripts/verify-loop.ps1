@@ -10,6 +10,7 @@ function Short($t, $n) { $c = Compact $t; $c.Substring(0, [math]::Min($n, $c.Len
 function Say($t) { Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $t" }
 
 try { Mcp-Init } catch { Say "MCP server not reachable on 127.0.0.1:8000 - open the editor first (Scripts\run-editor.bat)"; exit 2 }
+if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { Say 'PIE already running - stopping it first'; $null = Mcp-Call $TS_App 'StopPIE' @{}; Start-Sleep -Seconds 4 }
 $lvl = Mcp-Call $TS_Scene 'get_current_level' @{}
 if ($lvl.text -notmatch 'StationHub') {
     Say "current level is $(Short $lvl.text 80); loading /Game/Maps/StationHub"
@@ -17,7 +18,6 @@ if ($lvl.text -notmatch 'StationHub') {
     if (-not $r.ok) { Say "load_level failed (dirty level?): $(Short $r.text 200)"; exit 2 }
     Start-Sleep -Seconds 5
 }
-if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { Say 'PIE already running - stopping it first'; $null = Mcp-Call $TS_App 'StopPIE' @{}; Start-Sleep -Seconds 3 }
 
 # dismiss the Message Log that pops on PIE, find the console box
 $w = Mcp-Call $TS_Slate 'Windows' @{ action = 'list'; index = -1 }
