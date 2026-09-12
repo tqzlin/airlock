@@ -2,7 +2,7 @@
 
 Airlock is the internal codename for a spaceship MMO built in Unreal Engine 5.8 (C++). The marketed title may differ; never rename the module.
 
-This file is the shared brief for every agent that works in this repo (Claude, GPT/Codex, local models). `Docs/HANDOFF.md` is the operating guide (how to build, run, test, drive the editor, prove a change works); `Docs/tasks/` holds the task briefs. `CLAUDE.md` just points here.
+This file is the shared brief for every agent that works in this repo (Claude, GPT/Codex, local models). `Docs/STATUS.md` says where the project stands and what is next. `Docs/HANDOFF.md` is the operating guide (how to build, run, test, drive the editor, prove a change works); `Docs/tasks/` holds the task briefs. `CLAUDE.md` just points here.
 
 ## Working agreement for multiple agents
 - One task per branch, named `<agent>/<task>` (`astra/m3-voyage-clock`, `claude/m3-mining`). `main` is merged by the reviewing agent after `Scripts\verify-loop.ps1` and the automation tests pass. Never force-push, never rewrite `main`.
