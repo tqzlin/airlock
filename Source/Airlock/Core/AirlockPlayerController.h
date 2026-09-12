@@ -56,6 +56,16 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientVoyageBooked(const FVoyageSpec& Spec, bool bAccepted);
 
+	// --- Airlock transition card (GameInstance-owned Slate overlay that survives the travel) ---
+
+	/** Fade to the black card; the server travels once the fade has had time to finish. */
+	UFUNCTION(Client, Reliable)
+	void ClientBeginTransition(const FText& Title, const FText& Subtitle);
+
+	/** Fade the card away (called automatically shortly after arriving in a new level). */
+	UFUNCTION(Client, Reliable)
+	void ClientEndTransition();
+
 	// --- Console helpers (Exec: callable from the ~ console; used by the agent's PIE smoke tests) ---
 
 	/** Books today's voyage by type index (0 mining, 1 pirates, 2 derelict) without the UI. */
@@ -78,6 +88,8 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVoyageBoardWidget> BoardWidget;
+
+	FTimerHandle ArrivalFadeTimer;
 
 	UFUNCTION()
 	void HandleVoyageChosen(EVoyageType Type);

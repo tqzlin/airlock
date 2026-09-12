@@ -3,11 +3,13 @@
 #include "Core/AirlockPlayerController.h"
 #include "Airlock.h"
 #include "Blueprint/UserWidget.h"
+#include "Core/AirlockGameInstance.h"
 #include "Core/AirlockGameState.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "EnhancedInputSubsystems.h"
@@ -83,6 +85,32 @@ void AAirlockPlayerController::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, /*Priority*/ 0);
 			UE_LOG(LogAirlock, Log, TEXT("AirlockPlayerController: default mapping context registered"));
 		}
+	}
+
+	// Arriving through an airlock: the card is still up from the previous level; let the new one settle, then fade in.
+	if (IsLocalController())
+	{
+		if (UAirlockGameInstance* GI = Cast<UAirlockGameInstance>(GetGameInstance()); GI && GI->IsTransitionShown())
+		{
+			GetWorldTimerManager().SetTimer(ArrivalFadeTimer, this, &AAirlockPlayerController::ClientEndTransition, 1.0f, false);
+		}
+	}
+}
+
+void AAirlockPlayerController::ClientBeginTransition_Implementation(const FText& Title, const FText& Subtitle)
+{
+	CloseVoyageBoard();
+	if (UAirlockGameInstance* GI = Cast<UAirlockGameInstance>(GetGameInstance()))
+	{
+		GI->ShowTransition(Title, Subtitle);
+	}
+}
+
+void AAirlockPlayerController::ClientEndTransition_Implementation()
+{
+	if (UAirlockGameInstance* GI = Cast<UAirlockGameInstance>(GetGameInstance()))
+	{
+		GI->HideTransition();
 	}
 }
 

@@ -88,6 +88,8 @@ bool FAirlockStationInteractablesTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Leaf lifts the kit distance"), FMath::IsNearlyEqual(Door->OpenDistance, 268.f));
 		TestTrue(TEXT("Door replicates"), Door->GetIsReplicated());
 		TestTrue(TEXT("Kit doorway mesh referenced softly"), Door->DoorwayMesh.ToSoftObjectPath().ToString().Contains(TEXT("SM_Doorway_Small_A")));
+		TestFalse(TEXT("Plain doors are not gated by default"), Door->bRequiresBooking || Door->bAlwaysLocked);
+		TestFalse(TEXT("Plain doors start unlocked"), Door->IsLocked());
 	}
 	TestTrue(TEXT("Hub section id"), AAirlockGameMode::HubSectionId == FName(TEXT("StationHub")));
 	return true;

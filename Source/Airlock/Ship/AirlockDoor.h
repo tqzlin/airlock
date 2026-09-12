@@ -8,6 +8,7 @@
 
 class AAirlockDoor;
 class UBoxComponent;
+class UPointLightComponent;
 class USceneComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -25,7 +26,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnAirlockTransitionRequested, AA
  *
  * Behaviour: the server tracks pawns inside ProximityVolume and replicates bIsOpen; every machine animates the
  * leaf from that flag. Crossing the thin TransitionVolume at the threshold (server only) fires
- * OnTransitionRequested(Pawn, TargetSectionId); the level travel is wired in a later step.
+ * OnTransitionRequested(Door, Pawn, TargetSectionId); the game mode turns that into a level travel.
+ *
+ * Locking: a dock door with bRequiresBooking stays shut (red indicator) until the game state says a voyage is booked;
+ * bAlwaysLocked is a sealed hatch (the outer door of an airlock chamber). bIsLocked is server-computed and replicated.
  */
 UCLASS()
 class AIRLOCK_API AAirlockDoor : public AActor
@@ -71,8 +75,25 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Airlock|Motion", meta = (ClampMin = "0.05"))
 	float OpenTime = 0.6f;
 
+	/** Dock doors: stay locked until the crew has booked a voyage (AAirlockGameState::bVoyageBooked). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Airlock|Lock")
+	bool bRequiresBooking = false;
+
+	/** Sealed hatch: never opens (e.g. the outer door of an airlock chamber before the ship is docked). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Airlock|Lock")
+	bool bAlwaysLocked = false;
+
+	UPROPERTY(EditAnywhere, Category = "Airlock|Lock")
+	FLinearColor LockedColour = FLinearColor(1.f, 0.04f, 0.02f);
+
+	UPROPERTY(EditAnywhere, Category = "Airlock|Lock")
+	FLinearColor UnlockedColour = FLinearColor(0.15f, 1.f, 0.35f);
+
 	UFUNCTION(BlueprintPure, Category = "Airlock")
 	bool IsOpen() const { return bIsOpen; }
+
+	UFUNCTION(BlueprintPure, Category = "Airlock")
+	bool IsLocked() const { return bIsLocked; }
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void OnConstruction(const FTransform& Transform) override;
@@ -108,11 +129,21 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
 	TObjectPtr<UStaticMeshComponent> LeafPanel;
 
+	/** Small light above the opening: red = locked, green = free to pass. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock")
+	TObjectPtr<UPointLightComponent> IndicatorLight;
+
 	UPROPERTY(ReplicatedUsing = OnRep_IsOpen, VisibleInstanceOnly, Category = "Airlock")
 	bool bIsOpen = false;
 
+	UPROPERTY(ReplicatedUsing = OnRep_IsLocked, VisibleInstanceOnly, Category = "Airlock")
+	bool bIsLocked = false;
+
 	UFUNCTION()
 	void OnRep_IsOpen();
+
+	UFUNCTION()
+	void OnRep_IsLocked();
 
 	UFUNCTION()
 	void OnProximityBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -135,7 +166,11 @@ private:
 	FVector LeafClosedLocation = FVector::ZeroVector;
 	bool bUsingFallbackMeshes = false;
 
+	FTimerHandle LockPollTimer;
+
 	void ApplyMeshes();
 	void SetOpen(bool bOpen);
 	void UpdateLeaf();
+	void RefreshLock();      // server: derive bIsLocked from the flags + game state
+	void UpdateIndicator();  // everyone: colour the light from bIsLocked
 };

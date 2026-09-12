@@ -3,11 +3,15 @@
 #include "Ship/AirlockDoor.h"
 #include "Airlock.h"
 #include "Components/BoxComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/AirlockGameState.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -17,6 +21,7 @@ namespace
 	const FVector KitFrameBackOffset(-70.f, 0.f, 0.f);  // second frame on the far face of the 80 cm wall
 	const FVector KitLeafOffset(-35.f, 0.f, 0.f);       // leaf centred in the wall thickness
 	const FVector VolumeCentre(-35.f, 0.f, 150.f);
+	const FVector IndicatorLocation(-35.f, 0.f, 335.f);  // just above the 314 cm frame, inside the wall slot
 	const FVector ProximityExtent(220.f, 80.f, 150.f);  // same reach as the pack's Door_A_BP trigger
 	const FVector TransitionExtent(12.f, 80.f, 150.f);
 
@@ -81,6 +86,17 @@ AAirlockDoor::AAirlockDoor()
 	TransitionVolume->InitBoxExtent(TransitionExtent);
 	TransitionVolume->SetCollisionProfileName(TEXT("Trigger"));
 
+	IndicatorLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("IndicatorLight"));
+	IndicatorLight->SetupAttachment(DoorRoot);
+	IndicatorLight->SetRelativeLocation(IndicatorLocation);
+	IndicatorLight->SetMobility(EComponentMobility::Movable);
+	IndicatorLight->SetIntensityUnits(ELightUnits::Candelas);
+	IndicatorLight->SetIntensity(120.f);
+	IndicatorLight->SetAttenuationRadius(350.f);
+	IndicatorLight->SetSourceRadius(6.f);
+	IndicatorLight->SetCastShadows(false);
+	IndicatorLight->SetLightColor(UnlockedColour);
+
 	DoorwayMesh   = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/ModSci_Engineer/Meshes/SM_Doorway_Small_A.SM_Doorway_Small_A")));
 	FrameMesh     = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/ModSci_Engineer/Meshes/SM_Doorway_Small_A3.SM_Doorway_Small_A3")));
 	LeafMesh      = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/ModSci_Engineer/Meshes/SM_Door_Small_A.SM_Door_Small_A")));
@@ -95,6 +111,8 @@ void AAirlockDoor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 	ApplyMeshes();
+	bIsLocked = bAlwaysLocked || bRequiresBooking; // editor preview: a gated door shows red until play proves otherwise
+	UpdateIndicator();
 }
 
 void AAirlockDoor::BeginPlay()
@@ -109,12 +127,61 @@ void AAirlockDoor::BeginPlay()
 	ProximityVolume->OnComponentBeginOverlap.AddUniqueDynamic(this, &AAirlockDoor::OnProximityBegin);
 	ProximityVolume->OnComponentEndOverlap.AddUniqueDynamic(this, &AAirlockDoor::OnProximityEnd);
 	TransitionVolume->OnComponentBeginOverlap.AddUniqueDynamic(this, &AAirlockDoor::OnTransitionBegin);
+
+	if (HasAuthority())
+	{
+		RefreshLock();
+		if (bRequiresBooking && !bAlwaysLocked)
+		{
+			// The booking flag lives on the game state; poll it cheaply rather than wiring a delegate through travel.
+			GetWorldTimerManager().SetTimer(LockPollTimer, this, &AAirlockDoor::RefreshLock, 0.5f, true);
+		}
+	}
+	UpdateIndicator();
+}
+
+void AAirlockDoor::RefreshLock()
+{
+	bool bLocked = bAlwaysLocked;
+	if (!bLocked && bRequiresBooking)
+	{
+		const AAirlockGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr;
+		bLocked = !(GS && GS->bVoyageBooked);
+	}
+	if (bLocked != bIsLocked)
+	{
+		bIsLocked = bLocked;
+		OnRep_IsLocked();
+		PawnsNearby.RemoveAll([](const TWeakObjectPtr<APawn>& P) { return !P.IsValid(); });
+		if (bIsLocked)
+		{
+			SetOpen(false);
+		}
+		else if (PawnsNearby.Num() > 0)
+		{
+			SetOpen(true); // someone was already waiting at the door when it unlocked
+		}
+	}
+}
+
+void AAirlockDoor::OnRep_IsLocked()
+{
+	UpdateIndicator();
+}
+
+void AAirlockDoor::UpdateIndicator()
+{
+	if (IndicatorLight)
+	{
+		IndicatorLight->SetLightColor(bIsLocked ? LockedColour : UnlockedColour);
+	}
 }
 
 void AAirlockDoor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AAirlockDoor, bIsOpen);
+	DOREPLIFETIME(AAirlockDoor, bIsLocked);
 }
 
 void AAirlockDoor::ApplyMeshes()
@@ -192,7 +259,10 @@ void AAirlockDoor::OnProximityBegin(UPrimitiveComponent*, AActor* OtherActor, UP
 	if (APawn* Pawn = Cast<APawn>(OtherActor))
 	{
 		PawnsNearby.AddUnique(Pawn);
-		SetOpen(true);
+		if (!bIsLocked)
+		{
+			SetOpen(true);
+		}
 	}
 }
 
@@ -220,7 +290,7 @@ void AAirlockDoor::OnTransitionBegin(UPrimitiveComponent*, AActor* OtherActor, U
 		return;
 	}
 	APawn* Pawn = Cast<APawn>(OtherActor);
-	if (!Pawn)
+	if (!Pawn || bIsLocked)
 	{
 		return;
 	}

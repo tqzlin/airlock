@@ -10,6 +10,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "Ship/AirlockDoor.h"
+#include "TimerManager.h"
+#include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 
 const FName AAirlockGameMode::HubSectionId(TEXT("StationHub"));
@@ -106,6 +108,32 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 
 	const FString URL = Door->TargetLevel.GetLongPackageName();
 	bTravelPending = true;
-	UE_LOG(LogAirlock, Log, TEXT("Airlock %s: travelling to %s (section %s)"), *Door->GetName(), *URL, *TargetSectionId.ToString());
-	GetWorld()->ServerTravel(URL, /*bAbsolute*/ false);
+
+	// Card text: where we're going, and who's flying if it's a voyage.
+	FVoyageSpec Spec;
+	const bool bHasSpec = Voyages && Voyages->GetPendingVoyage(Spec);
+	const FText Title = bToHub
+		? NSLOCTEXT("Airlock", "TransitionToHub", "RETURNING TO STATION")
+		: NSLOCTEXT("Airlock", "TransitionBoarding", "CYCLING AIRLOCK");
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	const FText FromSection = FText::FromName(GS ? GS->CurrentSectionId : NAME_None);
+	const FText Subtitle = (bHasSpec && !bToHub)
+		? UVoyageBoardWidget::DescribeOffer(Spec)
+		: FText::Format(NSLOCTEXT("Airlock", "TransitionGeneric", "{0}  ->  {1}"), FromSection, FText::FromName(TargetSectionId));
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (AAirlockPlayerController* PC = Cast<AAirlockPlayerController>(It->Get()))
+		{
+			PC->ClientBeginTransition(Title, Subtitle);
+		}
+	}
+
+	UE_LOG(LogAirlock, Log, TEXT("Airlock %s: travelling to %s (section %s) in %.1fs"), *Door->GetName(), *URL, *TargetSectionId.ToString(), TravelFadeDelay);
+	GetWorldTimerManager().SetTimer(TravelTimer, FTimerDelegate::CreateWeakLambda(this, [this, URL]()
+	{
+		if (GetWorld())
+		{
+			GetWorld()->ServerTravel(URL, /*bAbsolute*/ false);
+		}
+	}), TravelFadeDelay, false);
 }

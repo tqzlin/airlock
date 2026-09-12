@@ -33,6 +33,11 @@ protected:
 	UFUNCTION()
 	void HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn, FName TargetSectionId);
 
+	/** Seconds between telling clients to fade out and actually travelling. */
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|Transition")
+	float TravelFadeDelay = 0.6f;
+
 private:
 	bool bTravelPending = false;
+	FTimerHandle TravelTimer;
 };

@@ -9,6 +9,7 @@ here. Do not move or rename pack folders after import (Fab re-adds create redire
 | ModSci_Engineer   | Modular SciFi Season 1 Starter Bundle (Engineer set) | Jonathon Frederick | Fab Standard Licence | 2026-09-11 | modular walls/floors/ceilings/doors, demo map, blueprints |
 | ModSci_EngiProps  | Modular SciFi Season 1 Starter Bundle (Engineer props) | Jonathon Frederick | Fab Standard Licence | 2026-09-11 | props/set dressing for the Engineer set |
 | ModSciInteriors   | Modular SciFi Season 2 Starter Bundle (Interiors) | Jonathon Frederick | Fab Standard Licence | 2026-09-11 | interior modules, second architectural set |
+| StarfieldFree      | Starfield Free (star / nebula spheres, 8K Milky Way + nebula textures, BP_Starfield_* sky blueprints) | (see Fab listing) | Fab Standard Licence | 2026-09-11 | space sky for every map; use BP_Starfield_Stars_Free or the Milky Way sphere, never edit the pack |
 
 ## Rules
 
