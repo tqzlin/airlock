@@ -9,26 +9,27 @@ const FShipLayout* Find(FName SectionId)
 	{
 		FShipLayout Layout;
 		Layout.SectionId = TEXT("Hauler_Mk1");
-		auto Module = [&Layout](const TCHAR* Id, EShipModuleType Type, double X, double Y, double Yaw, const TCHAR* Mesh)
+		// Z is the walking surface at that spot (probe: agent script 167). West hall glass floor -65, bridge 22.
+		auto Module = [&Layout](const TCHAR* Id, EShipModuleType Type, double X, double Y, double Z, double Yaw, const TCHAR* Mesh)
 		{
 			FShipModuleSpec Spec;
 			Spec.Id = Id; Spec.Type = Type;
-			Spec.Transform = FTransform(FRotator(0, Yaw, 0), FVector(X, Y, 20));
+			Spec.Transform = FTransform(FRotator(0, Yaw, 0), FVector(X, Y, Z));
 			Spec.Mesh = FSoftObjectPath(Mesh);
 			Layout.Modules.Add(Spec);
 		};
-		Module(TEXT("PowerCore"), EShipModuleType::PowerCore, -6300, 1900, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_PowerCells_Wall.SM_PowerCells_Wall"));
-		Module(TEXT("CoolantLoop"), EShipModuleType::CoolantLoop, -5900, 1900, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_WVC_Tank_A.SM_WVC_Tank_A"));
-		Module(TEXT("LifeSupport"), EShipModuleType::LifeSupport, -5500, 1900, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_ElectricDistribBox.SM_ElectricDistribBox"));
-		Module(TEXT("CargoClamps"), EShipModuleType::CargoClamps, -5100, 1900, 180, TEXT("/Game/ModSci_Engineer/Meshes/SM_StorageAreaNetwork.SM_StorageAreaNetwork"));
-		Module(TEXT("Engines"), EShipModuleType::Engines, -4700, 1900, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_EnergyNode_A.SM_EnergyNode_A"));
-		Module(TEXT("Nav"), EShipModuleType::Nav, -6300, 1220, 0, TEXT("/Game/ModSciInteriors/Meshes/SM_WVD_Server.SM_WVD_Server"));
-		Module(TEXT("Galley"), EShipModuleType::Galley, -4700, 1220, 0, TEXT("/Game/StarterBundle/ModularScifiProps/Meshes/SM_Cabinet_A.SM_Cabinet_A"));
+		Module(TEXT("PowerCore"), EShipModuleType::PowerCore, -6300, 1900, -65, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_PowerCells_Wall.SM_PowerCells_Wall"));
+		Module(TEXT("CoolantLoop"), EShipModuleType::CoolantLoop, -5900, 1900, -65, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_WVC_Tank_A.SM_WVC_Tank_A"));
+		Module(TEXT("LifeSupport"), EShipModuleType::LifeSupport, -5500, 1900, -65, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_ElectricDistribBox.SM_ElectricDistribBox"));
+		Module(TEXT("CargoClamps"), EShipModuleType::CargoClamps, -5100, 1900, -65, 180, TEXT("/Game/ModSci_Engineer/Meshes/SM_StorageAreaNetwork.SM_StorageAreaNetwork"));
+		Module(TEXT("Engines"), EShipModuleType::Engines, -4700, 1900, -65, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_EnergyNode_A.SM_EnergyNode_A"));
+		Module(TEXT("Nav"), EShipModuleType::Nav, 1800, 700, 22, 180, TEXT("/Game/ModSciInteriors/Meshes/SM_WVD_Server.SM_WVD_Server"));
+		Module(TEXT("Galley"), EShipModuleType::Galley, -4700, 1220, -65, 0, TEXT("/Game/StarterBundle/ModularScifiProps/Meshes/SM_Cabinet_A.SM_Cabinet_A"));
 		auto Line = [&Layout](const TCHAR* Id, EShipLineKind Kind, const TCHAR* From, const TCHAR* To, double X, const TCHAR* Mesh)
 		{
 			FShipLineSpec Spec;
 			Spec.Id = Id; Spec.Kind = Kind; Spec.From = From; Spec.To = To;
-			Spec.Transform = FTransform(FVector(X, 1220, 20));
+			Spec.Transform = FTransform(FVector(X, 1220, -65));
 			Spec.Mesh = FSoftObjectPath(Mesh);
 			Layout.Lines.Add(Spec);
 		};
