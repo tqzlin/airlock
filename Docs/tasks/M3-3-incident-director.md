@@ -32,7 +32,9 @@ worse shape.
      ordered `TArray<FIncidentSpec>`, deterministic from `Spec.Seed` (use `FRandomStream`), with these rules
      (all in named constants so tests can quote them):
      - nothing before `CalmSeconds = 150` and nothing after `Duration - DockSeconds (60)`;
-     - count = `BaseIncidents (4) + (CrewCount - 1)`, clamped to `[4, 8]`; crew count clamps to `[1, 4]`;
+     - count = `BaseIncidents (4) + (CrewCount - 1)`, clamped to `[4, 8]`; crew count clamps to `[1, 5]` so the
+       examples below hold (1 -> 4, 4 -> 7, 9 -> 8). *(Reviewer note 2026-09-12: the brief originally said `[1, 4]`,
+       which contradicted the `9 -> 8` test; Astra implemented the test examples and the reviewer kept that.)*
      - the first incident is always a `CoolantLeak` (the teaching fault); targets are drawn from the layout
        (coolant lines for leaks, power lines for shorts, `PowerCore`/`LifeSupport`/`CargoClamps`/`Engines` for damage
        with magnitude 30..50), no two consecutive incidents on the same target;
