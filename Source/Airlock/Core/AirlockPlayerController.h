@@ -119,6 +119,19 @@ public:
 	UFUNCTION(Server, Reliable) void ServerIncident(const FString& Type, FName TargetId, float Magnitude);
 	UFUNCTION(Server, Reliable) void ServerIncidentSchedule();
 
+	UFUNCTION(Exec) void AirlockCargoStatus();
+	UFUNCTION(Exec) void AirlockCarry(FName CrateId);
+	UFUNCTION(Exec) void AirlockDrop();
+	UFUNCTION(Exec) void AirlockPlace(FName SlotId);
+	UFUNCTION(Exec) void AirlockCrateHeat(FName CrateId, float Temperature);
+	UFUNCTION(Exec) void AirlockTally();
+	UFUNCTION(Server, Reliable) void ServerCargoStatus();
+	UFUNCTION(Server, Reliable) void ServerCarryById(FName CrateId);
+	UFUNCTION(Server, Reliable) void ServerDropCargo();
+	UFUNCTION(Server, Reliable) void ServerPlaceById(FName SlotId);
+	UFUNCTION(Server, Reliable) void ServerCrateHeat(FName CrateId, float Temperature);
+	UFUNCTION(Server, Reliable) void ServerCargoTally();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
