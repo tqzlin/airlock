@@ -42,6 +42,7 @@ Useful coordinates (StationHub unless noted): hub PlayerStart `(-5640, 1560)` lo
 - C++ for systems; no UMG/Blueprint assets so far (widgets are built in C++ in `RebuildWidget`). Keep it that way unless a brief says otherwise.
 - `load_level` refuses when the current or target level is dirty - `save_assets` first. Don't leave maps dirty at the end of a task.
 - If the editor misbehaves (stuck dialog, MCP not answering), close it and relaunch rather than clicking around. Report what happened.
+- If `Windows list` returns `[]`, `Snapshot` is empty or `CaptureEditorImage` says "Failed to capture any editor windows", the editor window is minimized (MCP still answers). Run `Scripts\restore-editor-window.ps1` and retry.
 
 ## 6. Reporting
 End every task with: behaviour changed; files; test names added/changed and their result; the `verify-loop.ps1` tail and any extra `LogAirlock` lines; captures; open questions; anything touched outside the brief. Put it in the PR / final message, and keep the branch pushed or at least committed locally.
