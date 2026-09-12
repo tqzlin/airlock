@@ -13,6 +13,7 @@ class UCarryPromptWidget;
 class ACargoCrate;
 class ACargoSlot;
 class AAirlockGameState;
+class AControlStation;
 
 /**
  * First-person crew member. Capsule + camera only for now (no mesh); walks the station hub and ship sections.
@@ -44,6 +45,12 @@ public:
 	/** Assigns from the cached baseline on authority and clients; safe to apply repeatedly. */
 	UFUNCTION() void OnRep_CarriedCrate();
 	AActor* TraceInteractTarget() const;
+
+	// --- The control-room seat (Ship/ControlStation). Server-authoritative; E toggles, movement stops while seated. ---
+	UFUNCTION(Server, Reliable) void ServerSitAt(AControlStation* Station);
+	UFUNCTION(Server, Reliable) void ServerStandUp();
+	AControlStation* GetSeatedStation() const { return SeatedStation; }
+	bool IsSeated() const { return SeatedStation != nullptr; }
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -78,4 +85,9 @@ private:
 	TWeakObjectPtr<AAirlockGameState> ObservedCargoState;
 	FDelegateHandle CargoChangedHandle;
 
+	UPROPERTY(ReplicatedUsing = OnRep_SeatedStation) TObjectPtr<AControlStation> SeatedStation;
+	UFUNCTION() void OnRep_SeatedStation();
+	/** Server: releases the seat (if any) and restores walking; puts the pawn at the seat's exit point when bToExit. */
+	void LeaveSeat(bool bToExit);
+	void ApplySeatedMovement(bool bSeated);
 };

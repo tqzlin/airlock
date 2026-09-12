@@ -12,6 +12,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerStart.h"
 #include "Ship/AirlockDoor.h"
+#include "Ship/ControlStation.h"
 #include "Ship/ShipLayouts.h"
 #include "Ship/ShipModule.h"
 #include "Ship/ShipLine.h"
@@ -364,6 +365,28 @@ void AAirlockGameMode::BuildShipGraph()
 			Actor->SetFolderPath(TEXT("Ship"));
 #endif
 			Actor->FinishSpawning(Spec.Transform);
+		}
+	}
+	FVoyageSpec Pending;
+	const UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
+	const FName Captain = (Voyages && Voyages->GetPendingVoyage(Pending)) ? Pending.Captain : FName(TEXT("Autopilot"));
+	for (const FControlStationSpec& Spec : Layout->Stations)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = *FString::Printf(TEXT("Station_%s"), *Spec.Id.ToString());
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AControlStation* Actor = GetWorld()->SpawnActor<AControlStation>(AControlStation::StaticClass(), Spec.Transform, Params);
+		if (Actor)
+		{
+			Actor->Initialize(Spec, Captain);
+#if WITH_EDITOR
+			Actor->SetActorLabel(FString::Printf(TEXT("Station_%s"), *Spec.Id.ToString()), false);
+			Actor->SetFolderPath(TEXT("Ship"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+			UE_LOG(LogAirlock, Log, TEXT("Control station %s at %s (captain %s has the conn)"),
+				*Spec.Id.ToString(), *Spec.Transform.GetLocation().ToString(), *Captain.ToString());
 		}
 	}
 	GetWorldTimerManager().SetTimer(ShipGraphTimer, this, &AAirlockGameMode::TickShipGraph, 0.25f, true);

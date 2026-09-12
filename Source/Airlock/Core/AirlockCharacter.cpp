@@ -11,6 +11,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
+#include "Ship/ControlStation.h"
 #include "UI/HoldProgressWidget.h"
 #include "UI/CarryPromptWidget.h"
 #include "Core/AirlockGameMode.h"
@@ -65,9 +66,9 @@ void AAirlockCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 void AAirlockCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D Axis = Value.Get<FVector2D>();
-	if (Controller == nullptr)
+	if (Controller == nullptr || SeatedStation != nullptr)
 	{
-		return;
+		return; // seated: the seat holds you; E stands up
 	}
 
 	const FRotator YawRotation(0.f, Controller->GetControlRotation().Yaw, 0.f);
@@ -90,6 +91,12 @@ void AAirlockCharacter::Look(const FInputActionValue& Value)
 
 void AAirlockCharacter::Interact(const FInputActionValue& Value)
 {
+	if (SeatedStation != nullptr)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Interact: standing up from %s"), *SeatedStation->GetActorNameOrLabel());
+		ServerStandUp();
+		return;
+	}
 	AActor* Target = TraceInteractTarget();
 	UE_LOG(LogAirlock, Log, TEXT("Interact: %s"), Target ? *Target->GetName() : TEXT("nothing in reach"));
 	if (CarriedCrate)
@@ -172,6 +179,10 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 		}
 		// Out of range pauses elapsed time; release explicitly resets it.
 	}
+	if (HasAuthority() && SeatedStation && !IsValid(SeatedStation))
+	{
+		LeaveSeat(false); // the station left with its level; give the legs back
+	}
 	if (IsLocallyControlled())
 	{
 		if (!HoldWidget && IsValid(HoldTarget))
@@ -194,6 +205,7 @@ void AAirlockCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, HoldTarget, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, HoldProgress, COND_OwnerOnly);
 	DOREPLIFETIME(AAirlockCharacter, CarriedCrate);
+	DOREPLIFETIME(AAirlockCharacter, SeatedStation);
 }
 void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -201,7 +213,7 @@ void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 	if (ObservedCargoState.IsValid()) { ObservedCargoState->OnShipGraphChanged.Remove(CargoChangedHandle); }
 	if (CarryWidget) { CarryWidget->RemoveFromParent(); CarryWidget = nullptr; }
 	if (HoldWidget) { HoldWidget->RemoveFromParent(); HoldWidget = nullptr; }
-	if (HasAuthority()) { ResetHold(); }
+	if (HasAuthority()) { ResetHold(); LeaveSeat(false); }
 	Super::EndPlay(Reason);
 }
 
@@ -240,6 +252,7 @@ void AAirlockCharacter::ServerPickUp_Implementation(ACargoCrate* Crate)
 {
 	if (!HasAuthority()) { return; }
 	if (CarriedCrate) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: hands full")); return; }
+	if (SeatedStation) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: seated")); return; }
 	if (!IsValid(Crate) || Crate->GetWorld() != GetWorld()) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: missing crate")); return; }
 	if (!IsInHoldRange(Crate)) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: out of range")); return; }
 	const auto* State = Crate->GetCargoState();
@@ -321,4 +334,69 @@ void AAirlockCharacter::CheckCarriedCargo()
 	const auto* State = CarriedCrate->GetCargoState();
 	// Delegate notification frees a vented carrier in the same publication; Tick also covers late binding.
 	if (State && State->State == ECargoState::Vented) { ServerPutDown(); }
+}
+
+// --- Control-room seat ---
+void AAirlockCharacter::ServerSitAt_Implementation(AControlStation* Station)
+{
+	if (!IsValid(Station) || Station->GetWorld() != GetWorld())
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Seat rejected: no such station in this world"));
+		return;
+	}
+	if (SeatedStation == Station) { return; }
+	if (CarriedCrate) { UE_LOG(LogAirlock, Log, TEXT("Seat %s rejected: hands full"), *Station->GetStationId().ToString()); return; }
+	if (!IsInHoldRange(Station))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Seat %s rejected: out of range (%.0f cm, reach %.0f cm)"), *Station->GetStationId().ToString(),
+			FVector::Distance(GetActorLocation(), Station->GetActorLocation()), InteractReach * 1.25f);
+		return;
+	}
+	if (!Station->ServerSeat(this))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Seat %s rejected: taken by %s"), *Station->GetStationId().ToString(),
+			Station->GetOccupant() ? *Station->GetOccupant()->GetName() : TEXT("?"));
+		return;
+	}
+	ResetHold();
+	LeaveSeat(false);
+	SeatedStation = Station;
+	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	TeleportTo(Station->GetSeatLocation() + FVector(0, 0, HalfHeight), Station->GetSeatRotation(), false, true);
+	if (Controller) { Controller->SetControlRotation(Station->GetSeatRotation()); }
+	ApplySeatedMovement(true);
+	ForceNetUpdate();
+	UE_LOG(LogAirlock, Log, TEXT("Seat %s taken by %s"), *Station->GetStationId().ToString(), *GetName());
+}
+void AAirlockCharacter::ServerStandUp_Implementation() { LeaveSeat(true); }
+void AAirlockCharacter::LeaveSeat(bool bToExit)
+{
+	if (!SeatedStation) { return; }
+	AControlStation* Station = SeatedStation;
+	SeatedStation = nullptr;
+	if (IsValid(Station))
+	{
+		Station->ServerVacate(this);
+		if (bToExit)
+		{
+			const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+			TeleportTo(Station->GetExitLocation() + FVector(0, 0, HalfHeight), GetActorRotation(), false, true);
+		}
+		UE_LOG(LogAirlock, Log, TEXT("Seat %s released by %s"), *Station->GetStationId().ToString(), *GetName());
+	}
+	ApplySeatedMovement(false);
+	ForceNetUpdate();
+}
+void AAirlockCharacter::ApplySeatedMovement(bool bSeated)
+{
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+		Movement->SetMovementMode(bSeated ? MOVE_None : MOVE_Walking);
+	}
+}
+void AAirlockCharacter::OnRep_SeatedStation()
+{
+	// Owning client mirrors the server's movement mode so prediction does not fight the seat.
+	if (!HasAuthority()) { ApplySeatedMovement(SeatedStation != nullptr); }
 }

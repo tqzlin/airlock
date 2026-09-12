@@ -62,7 +62,7 @@ void AShipLine::OnRep_Spec()
 		Label->SetWorldSize(LabelSize);
 		Label->SetTextRenderColor(LabelColour);
 		Label->SetRelativeLocation(FVector(0, 0, LabelHeight));
-		Label->SetRelativeRotation(FRotator(0, LabelFacingYaw - Spec.Transform.Rotator().Yaw, 0));
+		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
 		ShortLight->SetRelativeLocation(FVector(0, 0, LightHeight));
 		ShortLight->SetAttenuationRadius(LightRadius);
 		ShortLight->SetLightColor(ShortColour);

@@ -16,6 +16,8 @@
 #include "UI/VoyageBoardWidget.h"
 #include "UI/CaptainLineWidget.h"
 #include "UI/TaskBoardWidget.h"
+#include "UI/ControlBoardWidget.h"
+#include "Ship/ControlStation.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "Voyage/IncidentDirectorComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -112,6 +114,11 @@ void AAirlockPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		TaskBoardWidget->RemoveFromParent();
 		TaskBoardWidget = nullptr;
 	}
+	if (ControlBoardWidget)
+	{
+		ControlBoardWidget->RemoveFromParent();
+		ControlBoardWidget = nullptr;
+	}
 	if (CaptainWidget)
 	{
 		CaptainWidget->RemoveFromParent();
@@ -133,6 +140,41 @@ void AAirlockPlayerController::PlayerTick(float DeltaTime)
 	{
 		TaskBoardWidget->UpdateState(GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr);
 	}
+	if (!ControlBoardWidget)
+	{
+		ControlBoardWidget = CreateWidget<UControlBoardWidget>(this, UControlBoardWidget::StaticClass());
+		if (ControlBoardWidget) { ControlBoardWidget->AddToViewport(6); }
+	}
+	if (ControlBoardWidget)
+	{
+		const AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn());
+		ControlBoardWidget->UpdateState(GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr,
+			Crew ? Crew->GetSeatedStation() : nullptr);
+	}
+}
+
+void AAirlockPlayerController::AirlockSit(FName StationId) { ServerSitByStationId(StationId); }
+void AAirlockPlayerController::AirlockStand() { ServerStandUpFromConsole(); }
+void AAirlockPlayerController::AirlockLook(float Yaw, float Pitch)
+{
+	SetControlRotation(FRotator(Pitch, Yaw, 0.f));
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockLook yaw=%.0f pitch=%.0f"), Yaw, Pitch);
+}
+void AAirlockPlayerController::ServerSitByStationId_Implementation(FName StationId)
+{
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockSit %s"), *StationId.ToString());
+	AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Seat rejected: no crew pawn")); return; }
+	for (TActorIterator<AControlStation> It(GetWorld()); It; ++It)
+	{
+		if (It->GetStationId() == StationId) { Crew->ServerSitAt(*It); return; }
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Seat %s rejected: no such station on this section"), *StationId.ToString());
+}
+void AAirlockPlayerController::ServerStandUpFromConsole_Implementation()
+{
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockStand"));
+	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerStandUp(); }
 }
 
 void AAirlockPlayerController::ClientCaptainSays_Implementation(const FText& Line)

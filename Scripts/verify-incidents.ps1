@@ -94,8 +94,10 @@ try {
     })
     if ($schedule[0].Type -ne 'CoolantLeak') { throw 'The teaching incident is not a coolant leak' }
     $target = $schedule[0].Target
-    $targetX = switch ($target) { 'Coolant_1' { -6100 } 'Coolant_2' { -5700 } default { throw "Unknown teaching line: $target" } }
-    Send-IncidentCommand "AirlockWarp $targetX 1400 116"
+    # Walkway spots in reach of each coolant line after the level pass: Coolant_1 in engineering, Coolant_2 in the corridor.
+    $spot = switch ($target) { 'Coolant_1' { @(-1300, 430, 118) } 'Coolant_2' { @(-3320, 1500, 30) } default { throw "Unknown teaching line: $target" } }
+    $targetX = $spot[0]
+    Send-IncidentCommand "AirlockWarp $($spot[0]) $($spot[1]) $($spot[2])"
     Start-Sleep -Seconds 8
     Send-IncidentCommand 'AirlockWhere'
     $null = Wait-IncidentProofLine "Where:.*Hauler_Mk1.*pawn=.*at X=$targetX\." 5 $script:LastCommandAt
