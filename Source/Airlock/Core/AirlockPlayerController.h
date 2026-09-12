@@ -11,6 +11,7 @@ class UInputAction;
 class UInputMappingContext;
 class UVoyageBoardWidget;
 class UCaptainLineWidget;
+class UTaskBoardWidget;
 
 /**
  * Player controller that owns the Enhanced Input setup. The mapping context and actions are built
@@ -115,12 +116,16 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void PlayerTick(float DeltaTime) override;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVoyageBoardWidget> BoardWidget;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UCaptainLineWidget> CaptainWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTaskBoardWidget> TaskBoardWidget;
 
 	FTimerHandle ArrivalFadeTimer;
 

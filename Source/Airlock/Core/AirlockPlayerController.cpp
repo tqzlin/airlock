@@ -15,6 +15,7 @@
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "UI/CaptainLineWidget.h"
+#include "UI/TaskBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -103,12 +104,32 @@ void AAirlockPlayerController::BeginPlay()
 
 void AAirlockPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (TaskBoardWidget)
+	{
+		TaskBoardWidget->RemoveFromParent();
+		TaskBoardWidget = nullptr;
+	}
 	if (CaptainWidget)
 	{
 		CaptainWidget->RemoveFromParent();
 		CaptainWidget = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void AAirlockPlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	if (!IsLocalController() || !GetLocalPlayer()) { return; }
+	if (!TaskBoardWidget)
+	{
+		TaskBoardWidget = CreateWidget<UTaskBoardWidget>(this, UTaskBoardWidget::StaticClass());
+		if (TaskBoardWidget) { TaskBoardWidget->AddToViewport(4); }
+	}
+	if (TaskBoardWidget)
+	{
+		TaskBoardWidget->UpdateState(GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr);
+	}
 }
 
 void AAirlockPlayerController::ClientCaptainSays_Implementation(const FText& Line)
