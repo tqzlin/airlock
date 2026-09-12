@@ -30,6 +30,9 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, bVoyageActive);
 	DOREPLIFETIME(AAirlockGameState, ShipModules);
 	DOREPLIFETIME(AAirlockGameState, ShipLines);
+	DOREPLIFETIME(AAirlockGameState, Cargo);
+	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
+	DOREPLIFETIME(AAirlockGameState, bHasLastVoyageResult);
 }
 
 void AAirlockGameState::PublishShipGraph(const FShipGraph& Graph)
@@ -48,3 +51,13 @@ void AAirlockGameState::OnRep_ShipGraph()
 {
 	OnShipGraphChanged.Broadcast();
 }
+
+void AAirlockGameState::PublishCargo(const TArray<FCargoCrateState>& InCargo)
+{
+	if (!HasAuthority() || Cargo == InCargo) { return; }
+	Cargo = InCargo;
+	ForceNetUpdate();
+	OnRep_Cargo();
+}
+
+void AAirlockGameState::OnRep_Cargo() { OnShipGraphChanged.Broadcast(); }

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
 #include "Ship/ShipGraph.h"
+#include "Ship/CargoModel.h"
 #include "AirlockGameState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
@@ -63,6 +64,12 @@ public:
 	TArray<FShipLineState> ShipLines;
 
 	FOnShipGraphChanged OnShipGraphChanged;
+
+	UPROPERTY(ReplicatedUsing=OnRep_Cargo) TArray<FCargoCrateState> Cargo;
+	UPROPERTY(Replicated) FVoyageResult LastVoyageResult;
+	UPROPERTY(Replicated) bool bHasLastVoyageResult = false;
+	void PublishCargo(const TArray<FCargoCrateState>& InCargo);
+	UFUNCTION() void OnRep_Cargo();
 
 	/** Authority-only mirror; unchanged arrays are never rewritten. */
 	void PublishShipGraph(const FShipGraph& Graph);
