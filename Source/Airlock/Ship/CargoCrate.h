@@ -23,6 +23,7 @@ public:
 	FName GetCargoId() const { return Spec.Id; }
 	const FCargoCrateState* GetCargoState() const;
 	virtual FText GetInteractPrompt_Implementation() const override;
+	virtual void Interact_Implementation(APawn* Pawn) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> CargoRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
@@ -33,7 +34,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") float LabelHeight = 95.f;
 	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") float LabelSize = 22.f;
 	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") float HeatIntensity = 300.f;
-	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") FSoftObjectPath SteamTemplate = FSoftObjectPath(TEXT("/Game/ModSci_Engineer/Particles/PS_SteamDoor.PS_SteamDoor"));
+	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") FSoftObjectPath SteamTemplate = FSoftObjectPath(TEXT("/Game/ModSciInteriors/Particles/PS_SteamDoor.PS_SteamDoor"));
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;

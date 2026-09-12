@@ -5,6 +5,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Core/AirlockGameState.h"
+#include "Core/AirlockCharacter.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "Particles/ParticleSystem.h"
@@ -125,4 +126,9 @@ FText ACargoCrate::GetInteractPrompt_Implementation() const
 	const auto* State = GetCargoState();
 	if (!State || State->State == ECargoState::Carried || State->State == ECargoState::Vented) { return FText::GetEmpty(); }
 	return FText::Format(NSLOCTEXT("Airlock", "CargoPickUp", "Pick up {0}"), FText::FromName(Spec.Id));
+}
+
+void ACargoCrate::Interact_Implementation(APawn* Pawn)
+{
+	if (auto* Crew = Cast<AAirlockCharacter>(Pawn)) { Crew->ServerPickUp(this); }
 }

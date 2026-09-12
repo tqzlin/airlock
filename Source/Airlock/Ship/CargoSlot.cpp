@@ -4,6 +4,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Core/AirlockGameState.h"
+#include "Core/AirlockCharacter.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -83,4 +84,9 @@ void ACargoSlot::Refresh()
 FText ACargoSlot::GetInteractPrompt_Implementation() const
 {
 	return GetCrateId().IsNone() ? FText::Format(NSLOCTEXT("Airlock", "CargoPlace", "Place crate in {0}"), FText::FromName(Spec.Id)) : FText::GetEmpty();
+}
+
+void ACargoSlot::Interact_Implementation(APawn* Pawn)
+{
+	if (auto* Crew = Cast<AAirlockCharacter>(Pawn)) { Crew->ServerPlace(this); }
 }

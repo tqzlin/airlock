@@ -9,6 +9,10 @@
 class UCameraComponent;
 struct FInputActionValue;
 class UHoldProgressWidget;
+class UCarryPromptWidget;
+class ACargoCrate;
+class ACargoSlot;
+class AAirlockGameState;
 
 /**
  * First-person crew member. Capsule + camera only for now (no mesh); walks the station hub and ship sections.
@@ -30,6 +34,16 @@ public:
 	AActor* GetHoldTarget() const { return HoldTarget; }
 	float GetHoldProgress() const { return HoldProgress; }
 	bool IsInHoldRange(const AActor* Target) const;
+	UFUNCTION(Server, Reliable) void ServerPickUp(ACargoCrate* Crate);
+	UFUNCTION(Server, Reliable) void ServerPutDown();
+	UFUNCTION(Server, Reliable) void ServerPlace(ACargoSlot* CargoSlot);
+	UPROPERTY(ReplicatedUsing=OnRep_CarriedCrate) TObjectPtr<ACargoCrate> CarriedCrate;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> CarrySocket;
+	UPROPERTY(EditDefaultsOnly, Category="Airlock|Carry") FVector CarryOffset = FVector(80, 0, -20);
+	UPROPERTY(EditDefaultsOnly, Category="Airlock|Carry") float CarrySpeedFactor = .6f;
+	/** Assigns from the cached baseline on authority and clients; safe to apply repeatedly. */
+	UFUNCTION() void OnRep_CarriedCrate();
+	AActor* TraceInteractTarget() const;
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -38,6 +52,7 @@ public:
 	float InteractReach;
 
 protected:
+	virtual void BeginPlay() override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock|Camera")
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
 
@@ -52,5 +67,15 @@ private:
 	float HoldElapsed = 0.f;
 	void ResetHold();
 	UPROPERTY(Transient) TObjectPtr<UHoldProgressWidget> HoldWidget;
+	UPROPERTY(Transient) TObjectPtr<UCarryPromptWidget> CarryWidget;
+	float BaseWalkSpeed = 0.f;
+	bool bCarrySpeedCached = false;
+	void CacheCarrySpeed();
+	FVector PutDownLocation() const;
+	void DetachCarriedCrateAt(const FTransform& Transform);
+	void CheckCarriedCargo();
+	void BindCarriedCargo();
+	TWeakObjectPtr<AAirlockGameState> ObservedCargoState;
+	FDelegateHandle CargoChangedHandle;
 
 };

@@ -20,6 +20,7 @@ public:
 	FName GetSlotId() const { return Spec.Id; }
 	FName GetCrateId() const;
 	virtual FText GetInteractPrompt_Implementation() const override;
+	virtual void Interact_Implementation(APawn* Pawn) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> CargoRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Pad;
