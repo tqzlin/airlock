@@ -19,9 +19,17 @@ Last update: 2026-09-12, afternoon (Claude, after the M3-3 merge). Read `AGENTS.
   doors + the **bridge**: Command Center room grafted onto the east corridor dead-end, 2026-09-12). Packs: see
   `THIRD_PARTY_ASSETS.md` (git-ignored; Season 1 bundle and three industrial packs added 2026-09-12).
 
-## In flight
-- Nothing on a branch. Tom's decision 2026-09-12: Claude moves from the Cowork file queue to **Claude Code on stack**
-  (`Docs/HANDOFF.md` section 7) starting with the level pass below; the runner stays as the fallback.
+## In flight (2026-09-12, afternoon)
+- **Astra: M3-4 Carry verb + volatile cargo + tally** on `astra/m3-4-carry-and-cargo`, from the brief
+  `Docs/tasks/M3-4-carry-and-cargo.md` (red-teamed by a second model before launch; 16 findings folded in). Launched
+  by `agent\queue\174-launch-astra-m3-4.ps1`; log in `agent\results\174-*`. Owns the checkout `Airlock\` and the
+  editor on port 8000.
+- **Claude: level pass** on `claude/level-pass` in the worktree `..\Airlock-claude` (own editor on port 8001; the
+  two-checkout workflow is `Docs/HANDOFF.md` section 7). `AControlStation` seat + control board widget + 4 tests are
+  written and green (38 tests); module/line positions are being moved into the engineering bay, the main corridor,
+  the galley stub and the bridge. Merge order: level pass first, then M3-4 rebases.
+- Tom's decision 2026-09-12: Claude moves from the Cowork file queue to **Claude Code on stack**; the runner stays
+  as the fallback (it launched Astra this time).
 
 ## Next tasks (design source: project doc "Airlock voyage loop design", sections 3-4 and 8)
 1. Level pass (Claude, editor work, first Claude Code task): move placeholder modules/lines from the west hall into
