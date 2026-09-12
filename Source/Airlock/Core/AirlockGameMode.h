@@ -9,6 +9,7 @@
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
+class UIncidentDirectorComponent;
 
 /**
  * Server-authoritative game mode for every Airlock level (station hub and ship sections alike).
@@ -39,6 +40,7 @@ public:
 	bool ShipDamageModule(FName Id, float Amount);
 	bool ShipRepairModule(FName Id, float Amount);
 	FString ShipSummary() const;
+	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
 protected:
 	/** Bound to every AAirlockDoor in the level. Decides whether the crossing becomes a level travel. */
@@ -53,6 +55,9 @@ protected:
 	float TravelFadeDelay = 0.6f;
 
 private:
+	UPROPERTY(Transient)
+	TObjectPtr<UIncidentDirectorComponent> IncidentDirector;
+
 	FShipGraph ShipGraph;
 	FTimerHandle ShipGraphTimer;
 	void BuildShipGraph();
