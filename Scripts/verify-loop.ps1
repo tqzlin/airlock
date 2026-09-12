@@ -36,14 +36,16 @@ function Send-Console($cmd) {
 # Only log lines stamped after the run started count (the editor log keeps earlier PIE sessions). UE stamps in UTC.
 $script:RunStart = [DateTime]::UtcNow.AddSeconds(-5)
 function Get-FreshLine($text, $pattern) {
+    # newest matching line stamped after the run started (entries arrive oldest first)
+    $best = $null
     foreach ($m in [regex]::Matches($text, '\[(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2}):(\d{3})\]\[\s*\d+\][^\[]*')) {
         $line = $m.Value
         if ($line -notmatch $pattern) { continue }
         $g = $m.Groups
         $ts = New-Object DateTime ([int]$g[1].Value), ([int]$g[2].Value), ([int]$g[3].Value), ([int]$g[4].Value), ([int]$g[5].Value), ([int]$g[6].Value), ([int]$g[7].Value), ([DateTimeKind]::Utc)
-        if ($ts -ge $script:RunStart) { return $line }
+        if ($ts -ge $script:RunStart) { $best = $line }
     }
-    return $null
+    return $best
 }
 function Get-PawnWhere {
     Send-Console 'AirlockWhere'; Start-Sleep -Seconds 1
@@ -92,4 +94,4 @@ $errs = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = ''; pattern = 'Error:'; 
 if ($errs.text -match 'Error:') { Write-Say "errors in the log during the run: $(Short $errs.text 400)" }
 
 if ($fail.Count -eq 0) { Write-Say 'LOOP OK: hub spawn -> booked -> Dock B -> Hauler_Mk1 PlayerStart -> exit -> hub PlayerStart, voyage complete'; exit 0 }
-else { Write-Say ('LOOP FAILED: ' + ($fail -join '; ')); exit 1 }
+else { Write-Say ('LOOP FAILED: ' + ($fail -join '; ') + '  (if someone was playing in this PIE session, their input moves the pawn - rerun with hands off)'); exit 1 }
