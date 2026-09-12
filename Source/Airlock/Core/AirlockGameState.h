@@ -41,5 +41,16 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Airlock|Voyage")
 	bool bVoyageBooked;
 
+	/** Absolute server world time of docking; zero outside an active voyage. */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Airlock|Voyage")
+	double VoyageEndServerTime = 0.0;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Airlock|Voyage")
+	bool bVoyageActive = false;
+
+	/** Clients derive the countdown from the replicated deadline and synchronized server time. */
+	UFUNCTION(BlueprintPure, Category = "Airlock|Voyage")
+	double GetVoyageSecondsRemaining() const;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 };
