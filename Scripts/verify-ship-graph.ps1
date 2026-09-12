@@ -102,10 +102,10 @@ try {
     Save-ShipProofCapture 'coolant-leak-and-degraded-labels'
     Send-ShipCommand 'AirlockHold Coolant_1'
     $null = Wait-ShipProofLine 'Hold Coolant_1 rejected: out of range' 5 $script:LastCommandAt
-    Send-ShipCommand 'AirlockWarp -6100 1400 116'
+    Send-ShipCommand 'AirlockWarp -1300 430 118'   # engineering walkway in front of Coolant_1 (level pass)
     Start-Sleep -Seconds 8
     Send-ShipCommand 'AirlockWhere'
-    $null = Wait-ShipProofLine 'Where:.*Hauler_Mk1.*pawn=.*at X=-6100\.' 5 $script:LastCommandAt
+    $null = Wait-ShipProofLine 'Where:.*Hauler_Mk1.*pawn=.*at X=-1300\.' 5 $script:LastCommandAt
     Send-ShipCommand 'AirlockHold Coolant_1'
     $holdStartedAt = $script:LastCommandAt
     $null = Wait-ShipProofLine 'Hold Coolant_1 started .*duration=3\.0s' 5 $holdStartedAt

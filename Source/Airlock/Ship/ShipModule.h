@@ -24,7 +24,7 @@ public:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UTextRenderComponent> Label;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelSize = 30.f;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelHeight = 210.f;
-	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelFacingYaw = 180.f;
+
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FColor LabelColour = FColor::White;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FVector FallbackScale = FVector(1, 1, 1.5);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightHeight = 120.f;
