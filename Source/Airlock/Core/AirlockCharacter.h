@@ -9,6 +9,7 @@
 class UCameraComponent;
 struct FInputActionValue;
 class UHoldProgressWidget;
+class AControlStation;
 
 /**
  * First-person crew member. Capsule + camera only for now (no mesh); walks the station hub and ship sections.
@@ -30,6 +31,12 @@ public:
 	AActor* GetHoldTarget() const { return HoldTarget; }
 	float GetHoldProgress() const { return HoldProgress; }
 	bool IsInHoldRange(const AActor* Target) const;
+
+	// --- The control-room seat (Ship/ControlStation). Server-authoritative; E toggles, movement stops while seated. ---
+	UFUNCTION(Server, Reliable) void ServerSitAt(AControlStation* Station);
+	UFUNCTION(Server, Reliable) void ServerStandUp();
+	AControlStation* GetSeatedStation() const { return SeatedStation; }
+	bool IsSeated() const { return SeatedStation != nullptr; }
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -53,4 +60,9 @@ private:
 	void ResetHold();
 	UPROPERTY(Transient) TObjectPtr<UHoldProgressWidget> HoldWidget;
 
+	UPROPERTY(ReplicatedUsing = OnRep_SeatedStation) TObjectPtr<AControlStation> SeatedStation;
+	UFUNCTION() void OnRep_SeatedStation();
+	/** Server: releases the seat (if any) and restores walking; puts the pawn at the seat's exit point when bToExit. */
+	void LeaveSeat(bool bToExit);
+	void ApplySeatedMovement(bool bSeated);
 };

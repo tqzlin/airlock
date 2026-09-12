@@ -12,6 +12,7 @@ class UInputMappingContext;
 class UVoyageBoardWidget;
 class UCaptainLineWidget;
 class UTaskBoardWidget;
+class UControlBoardWidget;
 
 /**
  * Player controller that owns the Enhanced Input setup. The mapping context and actions are built
@@ -119,6 +120,14 @@ public:
 	UFUNCTION(Server, Reliable) void ServerIncident(const FString& Type, FName TargetId, float Magnitude);
 	UFUNCTION(Server, Reliable) void ServerIncidentSchedule();
 
+	/** Control-room seat by station id (same server path as the key; must be within reach) / stand up. */
+	UFUNCTION(Exec) void AirlockSit(FName StationId);
+	UFUNCTION(Exec) void AirlockStand();
+	/** Turns the local view (control rotation) to a world yaw/pitch so a capture after a warp looks at something known. */
+	UFUNCTION(Exec) void AirlockLook(float Yaw, float Pitch = 0.f);
+	UFUNCTION(Server, Reliable) void ServerSitByStationId(FName StationId);
+	UFUNCTION(Server, Reliable) void ServerStandUpFromConsole();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -132,6 +141,10 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTaskBoardWidget> TaskBoardWidget;
+
+	/** The full ship readout, shown while the local pawn sits at a control station. */
+	UPROPERTY(Transient)
+	TObjectPtr<UControlBoardWidget> ControlBoardWidget;
 
 	FTimerHandle ArrivalFadeTimer;
 
