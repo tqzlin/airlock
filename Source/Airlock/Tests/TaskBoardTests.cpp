@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "UI/TaskBoardWidget.h"
 #include "Ship/ShipLayouts.h"
+#include "Ship/CargoLayouts.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTaskBoardRowsTest, "Airlock.Incidents.TaskBoardPriorityRepairAndOverflow",
@@ -36,6 +37,41 @@ bool FTaskBoardRowsTest::RunTest(const FString& Parameters)
 	Rows = UTaskBoardWidget::BuildRows(Graph.Modules(), Graph.Lines());
 	TestEqual(TEXT("Eight tasks plus overflow row"), Rows.Num(), UTaskBoardWidget::MaxTaskRows + 1);
 	TestEqual(TEXT("Overflow counts hidden tasks"), Rows.Last().Text.ToString(), FString(TEXT("+3 more")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoTaskRowsTest, "Airlock.Cargo.TaskBoardHeatingPriorityAndLooseRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoTaskRowsTest::RunTest(const FString& Parameters)
+{
+	FCargoModel Cargo;
+	Cargo.Build(*CargoLayouts::Find(TEXT("Hauler_Mk1")));
+	FShipGraph Graph;
+	Graph.Build(*ShipLayouts::Find(TEXT("Hauler_Mk1")));
+	Graph.DamageModule(TEXT("PowerCore"), 58);
+	Graph.DamageModule(TEXT("Engines"), 90);
+	Graph.SetLineFault(TEXT("Coolant_1"), EShipLineFault::Leak);
+	Cargo.SetTemperature(TEXT("C2"), 71.9f);
+	Cargo.SetTemperature(TEXT("C4"), 80);
+	auto Rows = UTaskBoardWidget::BuildRows(Graph.Modules(), Graph.Lines(), Cargo.Crates());
+	TestEqual(TEXT("One row per cargo or ship task"), Rows.Num(), 7);
+	TestEqual(TEXT("Hottest first"), Rows[0].Text.ToString(), FString(TEXT("Cool crate C4 - 80C")));
+	TestTrue(TEXT("80 marked red"), Rows[0].bFailed);
+	TestEqual(TEXT("Next hottest floored"), Rows[1].Text.ToString(), FString(TEXT("Cool crate C2 - 71C")));
+	TestFalse(TEXT("Below 80 not red"), Rows[1].bFailed);
+	TestEqual(TEXT("Heating before Failed"), Rows[2].Text.ToString(), FString(TEXT("Engines - Failed 10%")));
+	TestEqual(TEXT("Secure tasks last"), Rows.Last().Text.ToString(), FString(TEXT("Secure crate C3")));
+	TestFalse(TEXT("Hot loose crate has no duplicate secure row"), Rows.ContainsByPredicate([](const auto& R) { return R.Text.ToString() == TEXT("Secure crate C2"); }));
+	Cargo.SetTemperature(TEXT("C4"), 100); Cargo.Tick(.25f, 0);
+	Cargo.PickUp(TEXT("C2")); Cargo.Place(TEXT("C2"), TEXT("ColdRack"));
+	Cargo.PickUp(TEXT("C1")); Cargo.Place(TEXT("C1"), TEXT("Clamp_1"));
+	Cargo.PickUp(TEXT("C3"));
+	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo.Crates());
+	TestEqual(TEXT("Vented, racked, secured and cool carried crates have no rows"), Rows.Num(), 1);
+	TestEqual(TEXT("Nominal when no tasks"), Rows[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	Cargo.PickUp(TEXT("C2"));
+	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo.Crates());
+	TestTrue(TEXT("Hot carried remains a cooling task"), Rows[0].Text.ToString().StartsWith(TEXT("Cool crate C2")));
 	return true;
 }
 #endif
