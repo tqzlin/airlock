@@ -12,7 +12,7 @@ namespace
 {
 	const TCHAR* CubePath = TEXT("/Engine/BasicShapes/Cube.Cube");
 	const FVector PanelLocation(0.f, 0.f, 160.f);      // SM_WVD_Panel_A is 120 wide x 22 thick x 78 tall, centred
-	const FRotator PanelRotation(0.f, 90.f, 0.f);      // panel's local -Y face -> world +X
+	const FRotator PanelRotation(0.f, 0.f, 0.f);       // measured in-editor: with actor yaw 180 the panel face looks down -X
 	const FVector StandLocation(0.f, 0.f, 60.f);
 	const FVector StandScale(0.12f, 0.12f, 1.2f);
 }
