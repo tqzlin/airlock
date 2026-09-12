@@ -7,6 +7,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "EnhancedInputSubsystems.h"
@@ -182,5 +183,31 @@ void AAirlockPlayerController::ClientVoyageBooked_Implementation(const FVoyageSp
 	else
 	{
 		BoardWidget->SetStatus(NSLOCTEXT("Airlock", "VoyageRefused", "Booking refused."));
+	}
+}
+
+void AAirlockPlayerController::AirlockBook(int32 TypeIndex)
+{
+	const EVoyageType Type = static_cast<EVoyageType>(FMath::Clamp(TypeIndex, 0, 2));
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockBook %d"), TypeIndex);
+	ServerChooseVoyage(Type);
+}
+
+void AAirlockPlayerController::AirlockWarp(float X, float Y, float Z)
+{
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockWarp %.0f %.0f %.0f"), X, Y, Z);
+	ServerWarp(FVector(X, Y, Z));
+}
+
+void AAirlockPlayerController::AirlockBoard()
+{
+	OpenVoyageBoard();
+}
+
+void AAirlockPlayerController::ServerWarp_Implementation(FVector Location)
+{
+	if (APawn* P = GetPawn())
+	{
+		P->TeleportTo(Location, P->GetActorRotation(), /*bIsATest*/ false, /*bNoCheck*/ true);
 	}
 }

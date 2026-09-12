@@ -84,7 +84,10 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 	}
 	if (Door->TargetLevel.IsNull())
 	{
-		UE_LOG(LogAirlock, Log, TEXT("Airlock %s: no destination level set - staying put"), *Door->GetName());
+		if (!TargetSectionId.IsNone())
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Airlock %s: section '%s' has no level set - staying put"), *Door->GetName(), *TargetSectionId.ToString());
+		}
 		return;
 	}
 

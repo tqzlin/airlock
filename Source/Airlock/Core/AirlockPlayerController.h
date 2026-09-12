@@ -56,6 +56,23 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientVoyageBooked(const FVoyageSpec& Spec, bool bAccepted);
 
+	// --- Console helpers (Exec: callable from the ~ console; used by the agent's PIE smoke tests) ---
+
+	/** Books today's voyage by type index (0 mining, 1 pirates, 2 derelict) without the UI. */
+	UFUNCTION(Exec)
+	void AirlockBook(int32 TypeIndex);
+
+	/** Teleports the pawn (server-side). */
+	UFUNCTION(Exec)
+	void AirlockWarp(float X, float Y, float Z);
+
+	/** Opens the departure board without looking at one. */
+	UFUNCTION(Exec)
+	void AirlockBoard();
+
+	UFUNCTION(Server, Reliable)
+	void ServerWarp(FVector Location);
+
 protected:
 	virtual void BeginPlay() override;
 

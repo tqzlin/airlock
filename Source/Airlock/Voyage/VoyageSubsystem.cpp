@@ -89,5 +89,5 @@ void UVoyageSubsystem::ClearPendingVoyage()
 
 int32 UVoyageSubsystem::TodaySeed()
 {
-	return static_cast<int32>(FDateTime::UtcNow().GetDate().GetTicks() / ETimespan::TicksPerDay);
+	return (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetDays();
 }
