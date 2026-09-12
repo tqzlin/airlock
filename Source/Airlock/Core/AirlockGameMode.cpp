@@ -12,6 +12,9 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerStart.h"
 #include "Ship/AirlockDoor.h"
+#include "Ship/ShipLayouts.h"
+#include "Ship/ShipModule.h"
+#include "Ship/ShipLine.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
@@ -95,6 +98,7 @@ void AAirlockGameMode::InitGameState()
 void AAirlockGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	BuildShipGraph();
 
 	int32 Bound = 0;
 	for (TActorIterator<AAirlockDoor> It(GetWorld()); It; ++It)
@@ -290,3 +294,101 @@ void AAirlockGameMode::ReturnToHub()
 		*HubLevel.GetLongPackageName(), *HubSectionId.ToString(), TravelFadeDelay);
 	TravelToSection(HubLevel, HubSectionId, NSLOCTEXT("Airlock", "TransitionToHub", "RETURNING TO STATION"), Subtitle);
 }
+
+void AAirlockGameMode::BuildShipGraph()
+{
+	AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	const FShipLayout* Layout = GS ? ShipLayouts::Find(GS->CurrentSectionId) : nullptr;
+	if (!HasAuthority() || !Layout) { return; }
+	ShipGraph.Build(*Layout);
+	PublishShipGraph();
+	UE_LOG(LogAirlock, Log, TEXT("Ship graph built: %d modules, %d lines (section %s)"),
+		ShipGraph.Modules().Num(), ShipGraph.Lines().Num(), *Layout->SectionId.ToString());
+	for (const FShipModuleSpec& Spec : Layout->Modules)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AShipModule* Actor = GetWorld()->SpawnActor<AShipModule>(AShipModule::StaticClass(), Spec.Transform, Params);
+		if (Actor)
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false);
+			Actor->SetFolderPath(TEXT("Ship"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	}
+	for (const FShipLineSpec& Spec : Layout->Lines)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AShipLine* Actor = GetWorld()->SpawnActor<AShipLine>(AShipLine::StaticClass(), Spec.Transform, Params);
+		if (Actor)
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false);
+			Actor->SetFolderPath(TEXT("Ship"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	}
+	GetWorldTimerManager().SetTimer(ShipGraphTimer, this, &AAirlockGameMode::TickShipGraph, 0.25f, true);
+}
+
+void AAirlockGameMode::TickShipGraph()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !GS->bVoyageActive) { return; }
+	ShipGraph.Tick(0.25f);
+	PublishShipGraph();
+}
+
+void AAirlockGameMode::PublishShipGraph()
+{
+	AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS) { return; }
+	for (const FShipModuleState& State : ShipGraph.Modules())
+	{
+		const FShipModuleState* Old = GS->ShipModules.FindByPredicate([&State](const FShipModuleState& M) { return M.Id == State.Id; });
+		if (Old && Old->Status != State.Status)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Ship %s %s cond=%.2f"), *State.Id.ToString(), FShipGraph::StatusName(State.Status), State.Condition);
+		}
+	}
+	for (const FShipLineState& State : ShipGraph.Lines())
+	{
+		const FShipLineState* Old = GS->ShipLines.FindByPredicate([&State](const FShipLineState& L) { return L.Id == State.Id; });
+		if (Old && Old->Fault != State.Fault)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Line %s fault=%s"), *State.Id.ToString(), FShipGraph::FaultName(State.Fault));
+		}
+	}
+	GS->PublishShipGraph(ShipGraph);
+}
+
+bool AAirlockGameMode::ShipSetLineFault(FName Id, EShipLineFault Fault)
+{
+	if (!HasAuthority() || !ShipGraph.SetLineFault(Id, Fault)) { return false; }
+	PublishShipGraph();
+	return true;
+}
+bool AAirlockGameMode::ShipRepairLine(FName Id) { return ShipSetLineFault(Id, EShipLineFault::None); }
+bool AAirlockGameMode::ShipDamageModule(FName Id, float Amount)
+{
+	if (!HasAuthority() || !ShipGraph.DamageModule(Id, Amount)) { return false; }
+	PublishShipGraph();
+	return true;
+}
+bool AAirlockGameMode::ShipRepairModule(FName Id, float Amount)
+{
+	if (!HasAuthority() || !ShipGraph.RepairModule(Id, Amount)) { return false; }
+	PublishShipGraph();
+	return true;
+}
+FString AAirlockGameMode::ShipSummary() const { return ShipGraph.Summary(); }

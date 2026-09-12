@@ -6,6 +6,8 @@
 #include "Core/AirlockGameInstance.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
+#include "Core/AirlockCharacter.h"
+#include "EngineUtils.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
@@ -293,4 +295,64 @@ void AAirlockPlayerController::ServerWarp_Implementation(FVector Location)
 	{
 		P->TeleportTo(Location, P->GetActorRotation(), /*bIsATest*/ false, /*bNoCheck*/ true);
 	}
+}
+
+void AAirlockPlayerController::AirlockFault(FName LineId, FString Fault) { ServerShipFault(LineId, Fault); }
+void AAirlockPlayerController::AirlockDamage(FName ModuleId, float Amount) { ServerAdjustShipModule(ModuleId, Amount, false); }
+void AAirlockPlayerController::AirlockRepairModule(FName ModuleId, float Amount) { ServerAdjustShipModule(ModuleId, Amount, true); }
+void AAirlockPlayerController::AirlockShipStatus() { ServerShipStatus(); }
+void AAirlockPlayerController::AirlockHold(FString TargetLabel) { ServerHoldByLabel(TargetLabel); }
+void AAirlockPlayerController::AirlockRelease() { ServerReleaseHold(); }
+
+void AAirlockPlayerController::ServerShipFault_Implementation(FName LineId, const FString& Fault)
+{
+	EShipLineFault Parsed;
+	if (Fault.Equals(TEXT("None"), ESearchCase::IgnoreCase)) { Parsed = EShipLineFault::None; }
+	else if (Fault.Equals(TEXT("Leak"), ESearchCase::IgnoreCase)) { Parsed = EShipLineFault::Leak; }
+	else if (Fault.Equals(TEXT("Short"), ESearchCase::IgnoreCase)) { Parsed = EShipLineFault::Short; }
+	else
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockFault %s %s rejected: expected None, Leak or Short"), *LineId.ToString(), *Fault);
+		return;
+	}
+	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	const bool bOk = GM && GM->ShipSetLineFault(LineId, Parsed);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockFault %s %s accepted=%d"), *LineId.ToString(), *Fault, bOk);
+}
+void AAirlockPlayerController::ServerAdjustShipModule_Implementation(FName ModuleId, float Amount, bool bRepair)
+{
+	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	const bool bOk = GM && (bRepair ? GM->ShipRepairModule(ModuleId, Amount) : GM->ShipDamageModule(ModuleId, Amount));
+	UE_LOG(LogAirlock, Log, TEXT("Console: %s %s %.2f accepted=%d"), bRepair ? TEXT("AirlockRepairModule") : TEXT("AirlockDamage"), *ModuleId.ToString(), Amount, bOk);
+}
+void AAirlockPlayerController::ServerShipStatus_Implementation()
+{
+	if (const AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockShipStatus"));
+		TArray<FString> Lines;
+		GM->ShipSummary().ParseIntoArrayLines(Lines);
+		if (Lines.IsEmpty()) { UE_LOG(LogAirlock, Log, TEXT("Ship graph empty")); }
+		for (const FString& Line : Lines) { UE_LOG(LogAirlock, Log, TEXT("%s"), *Line); }
+	}
+}
+void AAirlockPlayerController::ServerHoldByLabel_Implementation(const FString& TargetLabel)
+{
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockHold %s"), *TargetLabel);
+	AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Hold rejected: no crew pawn")); return; }
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->GetActorNameOrLabel() == TargetLabel)
+		{
+			Crew->ServerBeginHold(*It);
+			return;
+		}
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Hold %s rejected: actor not found"), *TargetLabel);
+}
+void AAirlockPlayerController::ServerReleaseHold_Implementation()
+{
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockRelease"));
+	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerEndHold(); }
 }
