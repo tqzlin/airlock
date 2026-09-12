@@ -113,6 +113,12 @@ public:
 	UFUNCTION(Server, Reliable) void ServerHoldByLabel(const FString& TargetLabel);
 	UFUNCTION(Server, Reliable) void ServerReleaseHold();
 
+	/** Developer incident injection; omitted target selects the first available layout entry. Gate before M4. */
+	UFUNCTION(Exec) void AirlockIncident(FString Type, FName TargetId = NAME_None, float Magnitude = 40.f);
+	UFUNCTION(Exec) void AirlockIncidentSchedule();
+	UFUNCTION(Server, Reliable) void ServerIncident(const FString& Type, FName TargetId, float Magnitude);
+	UFUNCTION(Server, Reliable) void ServerIncidentSchedule();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
