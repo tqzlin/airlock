@@ -60,8 +60,34 @@ bool UVoyageSubsystem::RequestVoyage(const FVoyageSpec& Spec, FGuid& OutVoyageId
 
 	OutVoyageId = FGuid::NewGuid();
 	ActiveVoyages.Add(OutVoyageId, Spec);
+	PendingVoyageId = OutVoyageId; // MVP: one crew, one voyage at a time
 	UE_LOG(LogAirlock, Log, TEXT("Voyage %s requested: type=%d ship=%s captain=%s crew=%d duration=%.0fs (active=%d)"),
 		*OutVoyageId.ToString(), static_cast<int32>(Spec.Type), *Spec.ShipClassId.ToString(), *Spec.Captain.ToString(),
 		Spec.CrewCapacity, Spec.DurationSeconds, ActiveVoyages.Num());
 	return true;
+}
+
+bool UVoyageSubsystem::GetPendingVoyage(FVoyageSpec& OutSpec) const
+{
+	if (const FVoyageSpec* Found = ActiveVoyages.Find(PendingVoyageId))
+	{
+		OutSpec = *Found;
+		return true;
+	}
+	return false;
+}
+
+void UVoyageSubsystem::ClearPendingVoyage()
+{
+	if (PendingVoyageId.IsValid())
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Voyage %s complete"), *PendingVoyageId.ToString());
+		ActiveVoyages.Remove(PendingVoyageId);
+		PendingVoyageId.Invalidate();
+	}
+}
+
+int32 UVoyageSubsystem::TodaySeed()
+{
+	return static_cast<int32>(FDateTime::UtcNow().GetDate().GetTicks() / ETimespan::TicksPerDay);
 }

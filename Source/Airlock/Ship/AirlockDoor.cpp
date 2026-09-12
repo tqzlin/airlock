@@ -37,21 +37,25 @@ AAirlockDoor::AAirlockDoor()
 
 	Doorway = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Doorway"));
 	Doorway->SetupAttachment(DoorRoot);
+	Doorway->SetRelativeLocation(KitDoorwayOffset);
 	Doorway->SetMobility(EComponentMobility::Static);
 	Doorway->SetCollisionProfileName(TEXT("BlockAll"));
 
 	FrameFront = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FrameFront"));
 	FrameFront->SetupAttachment(DoorRoot);
+	FrameFront->SetRelativeLocation(KitFrameFrontOffset);
 	FrameFront->SetMobility(EComponentMobility::Static);
 	FrameFront->SetCollisionProfileName(TEXT("NoCollision"));
 
 	FrameBack = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FrameBack"));
 	FrameBack->SetupAttachment(DoorRoot);
+	FrameBack->SetRelativeLocation(KitFrameBackOffset);
 	FrameBack->SetMobility(EComponentMobility::Static);
 	FrameBack->SetCollisionProfileName(TEXT("NoCollision"));
 
 	Leaf = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Leaf"));
 	Leaf->SetupAttachment(DoorRoot);
+	Leaf->SetRelativeLocation(KitLeafOffset);
 	Leaf->SetMobility(EComponentMobility::Movable);
 	Leaf->SetCollisionProfileName(TEXT("BlockAll"));
 
@@ -96,7 +100,11 @@ void AAirlockDoor::OnConstruction(const FTransform& Transform)
 void AAirlockDoor::BeginPlay()
 {
 	Super::BeginPlay();
-	ApplyMeshes();
+	if (Leaf->GetStaticMesh() == nullptr)
+	{
+		// Spawned at runtime (placed actors already carry their meshes and static components must not be moved in-game).
+		ApplyMeshes();
+	}
 
 	ProximityVolume->OnComponentBeginOverlap.AddUniqueDynamic(this, &AAirlockDoor::OnProximityBegin);
 	ProximityVolume->OnComponentEndOverlap.AddUniqueDynamic(this, &AAirlockDoor::OnProximityEnd);
@@ -123,18 +131,23 @@ void AAirlockDoor::ApplyMeshes()
 
 	if (!bUsingFallbackMeshes)
 	{
+		auto Place = [](UStaticMeshComponent* Comp, const FVector& Location, const FVector& Scale)
+		{
+			if (!Comp->GetRelativeLocation().Equals(Location) || !Comp->GetRelativeScale3D().Equals(Scale))
+			{
+				Comp->SetRelativeLocation(Location);
+				Comp->SetRelativeScale3D(Scale);
+			}
+		};
 		Doorway->SetStaticMesh(DoorwayAsset);
-		Doorway->SetRelativeLocation(KitDoorwayOffset);
-		Doorway->SetRelativeScale3D(FVector::OneVector);
+		Place(Doorway, KitDoorwayOffset, FVector::OneVector);
 		Doorway->SetVisibility(true);
 		Doorway->SetCollisionProfileName(TEXT("BlockAll"));
 
 		FrameFront->SetStaticMesh(FrameAsset);
-		FrameFront->SetRelativeLocation(KitFrameFrontOffset);
-		FrameFront->SetRelativeScale3D(FVector::OneVector);
+		Place(FrameFront, KitFrameFrontOffset, FVector::OneVector);
 		FrameBack->SetStaticMesh(FrameAsset);
-		FrameBack->SetRelativeLocation(KitFrameBackOffset);
-		FrameBack->SetRelativeScale3D(FVector::OneVector);
+		Place(FrameBack, KitFrameBackOffset, FVector::OneVector);
 
 		Leaf->SetStaticMesh(LeafAsset);
 		Leaf->SetRelativeScale3D(FVector::OneVector);
@@ -214,7 +227,7 @@ void AAirlockDoor::OnTransitionBegin(UPrimitiveComponent*, AActor* OtherActor, U
 
 	UE_LOG(LogAirlock, Log, TEXT("Airlock %s: %s crossed the threshold towards section '%s'"),
 		*GetName(), *Pawn->GetName(), *TargetSectionId.ToString());
-	OnTransitionRequested.Broadcast(Pawn, TargetSectionId);
+	OnTransitionRequested.Broadcast(this, Pawn, TargetSectionId);
 }
 
 void AAirlockDoor::SetOpen(bool bOpen)

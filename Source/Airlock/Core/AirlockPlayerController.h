@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Voyage/VoyageTypes.h"
 #include "AirlockPlayerController.generated.h"
 
 class UInputAction;
 class UInputMappingContext;
+class UVoyageBoardWidget;
 
 /**
  * Player controller that owns the Enhanced Input setup. The mapping context and actions are built
@@ -37,6 +39,32 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Airlock|Input")
 	TObjectPtr<UInputAction> InteractAction;
 
+	// --- Voyage board (local UI; booking goes through the server) ---
+
+	/** Shows the departure list built from the replicated day seed. Local controllers only. */
+	UFUNCTION(BlueprintCallable, Category = "Airlock|Voyage")
+	void OpenVoyageBoard();
+
+	UFUNCTION(BlueprintCallable, Category = "Airlock|Voyage")
+	void CloseVoyageBoard();
+
+	/** Asks the server to book today's voyage of the given type. The server rebuilds the spec itself. */
+	UFUNCTION(Server, Reliable)
+	void ServerChooseVoyage(EVoyageType Type);
+
+	/** Server's answer to ServerChooseVoyage. */
+	UFUNCTION(Client, Reliable)
+	void ClientVoyageBooked(const FVoyageSpec& Spec, bool bAccepted);
+
 protected:
 	virtual void BeginPlay() override;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UVoyageBoardWidget> BoardWidget;
+
+	UFUNCTION()
+	void HandleVoyageChosen(EVoyageType Type);
+
+	UFUNCTION()
+	void HandleBoardClosed();
 };

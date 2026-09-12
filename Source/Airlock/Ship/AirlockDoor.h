@@ -6,13 +6,14 @@
 #include "GameFramework/Actor.h"
 #include "AirlockDoor.generated.h"
 
+class AAirlockDoor;
 class UBoxComponent;
 class USceneComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWorld;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAirlockTransitionRequested, APawn*, Pawn, FName, TargetSectionId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnAirlockTransitionRequested, AAirlockDoor*, Door, APawn*, Pawn, FName, TargetSectionId);
 
 /**
  * The boundary between two ship sections (or between the hub and a docked ship).

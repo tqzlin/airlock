@@ -6,6 +6,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "AirlockGameMode.generated.h"
 
+class AAirlockDoor;
+
 /**
  * Server-authoritative game mode for every Airlock level (station hub and ship sections alike).
  * Wires the project's pawn / controller / game state classes and enables seamless travel so
@@ -20,4 +22,17 @@ public:
 	AAirlockGameMode();
 
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual void InitGameState() override;
+	virtual void BeginPlay() override;
+
+	/** Section id of the station hub; a door targeting it always travels (and ends the pending voyage). */
+	static const FName HubSectionId;
+
+protected:
+	/** Bound to every AAirlockDoor in the level. Decides whether the crossing becomes a level travel. */
+	UFUNCTION()
+	void HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn, FName TargetSectionId);
+
+private:
+	bool bTravelPending = false;
 };

@@ -5,6 +5,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Core/AirlockPlayerController.h"
+#include "Core/Interactable.h"
 #include "EnhancedInputComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -87,5 +88,10 @@ void AAirlockCharacter::Interact(const FInputActionValue& Value)
 	FCollisionQueryParams Params(TEXT("AirlockInteract"), /*bTraceComplex*/ false, this);
 	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
 
-	UE_LOG(LogAirlock, Log, TEXT("Interact: %s"), bHit && Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("nothing in reach"));
+	AActor* Target = bHit ? Hit.GetActor() : nullptr;
+	UE_LOG(LogAirlock, Log, TEXT("Interact: %s"), Target ? *Target->GetName() : TEXT("nothing in reach"));
+	if (Target && Target->Implements<UInteractable>())
+	{
+		IInteractable::Execute_Interact(Target, this);
+	}
 }

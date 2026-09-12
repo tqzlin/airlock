@@ -8,6 +8,8 @@ AAirlockGameState::AAirlockGameState()
 	CurrentSectionId = TEXT("StationHub");
 	SectionPopulationCap = 32;
 	SectionPopulation = 0;
+	DaySeed = 0;
+	bVoyageBooked = false;
 }
 
 void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -17,4 +19,6 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, CurrentSectionId);
 	DOREPLIFETIME(AAirlockGameState, SectionPopulationCap);
 	DOREPLIFETIME(AAirlockGameState, SectionPopulation);
+	DOREPLIFETIME(AAirlockGameState, DaySeed);
+	DOREPLIFETIME(AAirlockGameState, bVoyageBooked);
 }

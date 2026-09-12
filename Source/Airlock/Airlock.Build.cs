@@ -18,9 +18,10 @@ public class Airlock : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
-			"NetCore"
+			"NetCore",
+			"UMG"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 	}
 }

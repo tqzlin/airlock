@@ -33,5 +33,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Airlock|Section")
 	bool HasLifeSupportCapacity() const { return SectionPopulation < SectionPopulationCap; }
 
+	/** Seed for today's departure board; every client derives the same three offers from it. */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Airlock|Voyage")
+	int32 DaySeed;
+
+	/** True once a voyage has been booked on this server (the dock airlock will let the crew through). */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Airlock|Voyage")
+	bool bVoyageBooked;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 };

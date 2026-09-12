@@ -34,6 +34,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Airlock|Voyage")
 	int32 GetActiveVoyageCount() const { return ActiveVoyages.Num(); }
 
+	/** The voyage the crew is about to leave on / is currently on. Survives level travel (GameInstance-owned). */
+	UFUNCTION(BlueprintPure, Category = "Airlock|Voyage")
+	bool HasPendingVoyage() const { return PendingVoyageId.IsValid(); }
+
+	UFUNCTION(BlueprintPure, Category = "Airlock|Voyage")
+	bool GetPendingVoyage(FVoyageSpec& OutSpec) const;
+
+	/** Server-only. Ends the pending voyage (called when the crew returns to the hub). */
+	UFUNCTION(BlueprintCallable, Category = "Airlock|Voyage")
+	void ClearPendingVoyage();
+
+	/** Days since the Unix epoch in UTC: the same on every machine on the same day. */
+	static int32 TodaySeed();
+
 private:
 	TMap<FGuid, FVoyageSpec> ActiveVoyages;
+	FGuid PendingVoyageId;
 };
