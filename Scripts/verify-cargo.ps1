@@ -168,7 +168,8 @@ try {
         $statusAt = $script:LastCommandAt
         $null = Wait-CargoProofLine 'Ship Galley Nominal cond=100\.00' 5 $statusAt
         if (@(Get-CargoProofLines 'Ship \w+ Nominal cond=100\.00' $statusAt).Count -ne 7) { throw 'Ship must dock with all seven modules at 100' }
-        if (@(Get-CargoProofLines 'Incident (CoolantLeak|PowerShort|ModuleDamage|CargoShift) ').Count -ne 1) { throw 'A scheduled incident fired during the calm proof' }
+        # Anchor on the director's own line: the console echoes ('AgentConsole: AirlockIncident ...', 'Console: AirlockIncident ... accepted=1') also contain 'Incident CargoShift '.
+        if (@(Get-CargoProofLines 'Incident ' | Where-Object { $_ -match ': Incident (CoolantLeak|PowerShort|ModuleDamage|CargoShift) ' }).Count -ne 1) { throw 'A scheduled incident fired during the calm proof' }
         Send-CargoCommand 'AirlockWarp -7015 1560 116'
         $returnAt = $script:LastCommandAt
         $null = Wait-CargoProofLine 'Voyage result: 2/4 crates intact, 1 vented, 1 loose, hull 100\.00%, pay 400' 5 $returnAt
