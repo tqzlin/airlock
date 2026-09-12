@@ -86,6 +86,10 @@ void AAirlockGameMode::InitGameState()
 	GS->CurrentSectionId = FName(*MapName);
 	GS->DaySeed = UVoyageSubsystem::TodaySeed();
 	GS->bVoyageBooked = Voyages && Voyages->HasPendingVoyage();
+	if (GS->CurrentSectionId == HubSectionId && Voyages)
+	{
+		GS->bHasLastVoyageResult = Voyages->GetLastVoyageResult(GS->LastVoyageResult);
+	}
 
 	FVoyageSpec Spec;
 	if (Voyages && Voyages->GetPendingVoyage(Spec))
@@ -122,6 +126,7 @@ void AAirlockGameMode::BeginPlay()
 	if (GS && GS->CurrentSectionId != HubSectionId && Voyages && Voyages->GetPendingVoyage(ActiveVoyage))
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
+		bStartedVoyageClock = true;
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -167,6 +172,7 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 	}
 	if (bToHub && Voyages)
 	{
+		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
 
@@ -306,6 +312,7 @@ void AAirlockGameMode::ReturnToHub()
 	}
 	if (UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
 	{
+		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
 	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
@@ -513,3 +520,15 @@ FName AAirlockGameMode::CargoFirstFilledClamp() const
 }
 FVoyageResult AAirlockGameMode::CargoTally() const { return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage); }
 FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
+
+void AAirlockGameMode::RecordVoyageResult()
+{
+	if (!HasAuthority() || !bStartedVoyageClock || bRecordedVoyageResult) { return; }
+	if (auto* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
+	{
+		const FVoyageResult Result = CargoTally();
+		Voyages->SetLastVoyageResult(Result);
+		bRecordedVoyageResult = true;
+		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s"), *Result.Summary());
+	}
+}

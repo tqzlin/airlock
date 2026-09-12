@@ -49,6 +49,7 @@ public:
 	FName CargoFirstFilledClamp() const;
 	FVoyageResult CargoTally() const;
 	FString CargoSummary() const;
+	void RecordVoyageResult();
 	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
 protected:
@@ -82,6 +83,8 @@ private:
 	FTimerHandle TravelTimer;
 
 	FVoyageSpec ActiveVoyage;
+	bool bStartedVoyageClock = false;
+	bool bRecordedVoyageResult = false;
 	TArray<FVoyageAnnouncement> CaptainSchedule;
 	int32 NextCaptainEntry = 0;
 	FTimerHandle VoyageTimer;

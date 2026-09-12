@@ -166,12 +166,17 @@ public:
 		if (Step++ == 0)
 		{
 			Test->TestNotNull(TEXT("Booked ship creates the director"), Ship.Director);
+			FVoyageResult Result;
+			Test->TestFalse(TEXT("No result before docking"), Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->GetLastVoyageResult(Result));
 			Ship.Mode->SetVoyageSecondsRemaining(0.f);
 			return false;
 		}
 		Test->TestEqual(TEXT("Direct docking jump consumes every incident before ending voyage"), Ship.Director->GetNextEntry(), Ship.Director->GetSchedule().Num());
 		Test->TestFalse(TEXT("Clock ends voyage after catch-up"), Ship.State->bVoyageActive);
 		Test->TestFalse(TEXT("Docking clears the booking"), Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->HasPendingVoyage());
+		FVoyageResult Result;
+		Test->TestTrue(TEXT("Docking records result before travel"), Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->GetLastVoyageResult(Result));
+		Test->TestEqual(TEXT("Docked manifest captured"), Result.CratesTotal, 4);
 		return true;
 	}
 };
@@ -216,6 +221,30 @@ bool FCargoIncidentApplyTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Omitted target finds filled clamp"), Ship.Director->FireNow(EIncidentType::CargoShift));
 	TestTrue(TEXT("Filled target released"), Ship.State->Cargo[1].State == ECargoState::Loose);
 	TestFalse(TEXT("No filled clamp skipped"), Ship.Director->FireNow(EIncidentType::CargoShift));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoResultRecordingTest, "Airlock.Cargo.ResultRecordsOnceAndNextVoyageOverwrites",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoResultRecordingTest::RunTest(const FString& Parameters)
+{
+	FIncidentTestWorld Ship;
+	auto* Voyages = Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>();
+	FVoyageResult Result;
+	Ship.Mode->CargoTally();
+	TestFalse(TEXT("Preview tally records nothing"), Voyages->GetLastVoyageResult(Result));
+	Ship.Mode->CargoPickUp(TEXT("C1")); Ship.Mode->CargoPlace(TEXT("C1"), TEXT("Clamp_1"));
+	Ship.Mode->RecordVoyageResult();
+	TestTrue(TEXT("First result saved"), Voyages->GetLastVoyageResult(Result));
+	TestEqual(TEXT("One intact"), Result.CratesIntact, 1);
+	Ship.Mode->CargoPickUp(TEXT("C2")); Ship.Mode->CargoPlace(TEXT("C2"), TEXT("Clamp_2"));
+	Ship.Mode->RecordVoyageResult();
+	Voyages->GetLastVoyageResult(Result);
+	TestEqual(TEXT("Repeated record cannot change this voyage's result"), Result.CratesIntact, 1);
+	const auto Next = Ship.Mode->CargoTally();
+	Voyages->SetLastVoyageResult(Next);
+	Voyages->GetLastVoyageResult(Result);
+	TestEqual(TEXT("Next docking can overwrite result"), Result.CratesIntact, 2);
 	return true;
 }
 #endif

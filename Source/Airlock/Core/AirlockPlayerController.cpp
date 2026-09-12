@@ -191,6 +191,7 @@ void AAirlockPlayerController::OpenVoyageBoard()
 		return;
 	}
 	BoardWidget->SetOffers(Voyages->GetOfferedVoyages(GS->DaySeed));
+	BoardWidget->SetLastVoyageResult(GS->LastVoyageResult, GS->bHasLastVoyageResult);
 	BoardWidget->OnVoyageChosen.AddDynamic(this, &AAirlockPlayerController::HandleVoyageChosen);
 	BoardWidget->OnClosed.AddDynamic(this, &AAirlockPlayerController::HandleBoardClosed);
 	BoardWidget->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));

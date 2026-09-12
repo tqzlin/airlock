@@ -33,6 +33,19 @@ void UVoyageBoardWidget::SetOffers(const TArray<FVoyageSpec>& InOffers)
 	RefreshLabels();
 }
 
+FText UVoyageBoardWidget::DescribeResult(const FVoyageResult& Result)
+{
+	return FText::Format(NSLOCTEXT("Airlock", "LastVoyageResult", "Last run: {0}/{1} crates intact - hull {2}% - pay {3} cr"),
+		FText::AsNumber(Result.CratesIntact), FText::AsNumber(Result.CratesTotal),
+		FText::AsNumber(FMath::RoundToInt(Result.ShipCondition)), FText::AsNumber(Result.Pay));
+}
+void UVoyageBoardWidget::SetLastVoyageResult(const FVoyageResult& Result, bool bHasResult)
+{
+	LastResult = Result;
+	bHasLastResult = bHasResult;
+	RefreshLabels();
+}
+
 void UVoyageBoardWidget::SetStatus(const FText& InStatus)
 {
 	if (Status)
@@ -89,6 +102,11 @@ TSharedRef<SWidget> UVoyageBoardWidget::RebuildWidget()
 		Title->SetFont(TitleFont);
 		if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(Title)) { S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
 
+		ResultLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("LastRun"));
+		ResultLabel->SetColorAndOpacity(FSlateColor(AccentColour));
+		FSlateFontInfo ResultFont = ResultLabel->GetFont(); ResultFont.Size = 16; ResultLabel->SetFont(ResultFont);
+		Column->AddChildToVerticalBox(ResultLabel)->SetPadding(FMargin(0, 0, 0, 10));
+
 		Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
 		Status->SetText(NSLOCTEXT("Airlock", "VoyageBoardHint", "Pick a voyage, then proceed to Dock B."));
 		FSlateFontInfo StatusFont = Status->GetFont();
@@ -132,6 +150,11 @@ void UVoyageBoardWidget::NativeConstruct()
 
 void UVoyageBoardWidget::RefreshLabels()
 {
+	if (ResultLabel)
+	{
+		ResultLabel->SetText(bHasLastResult ? DescribeResult(LastResult) : FText::GetEmpty());
+		ResultLabel->SetVisibility(bHasLastResult ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 	for (int32 i = 0; i < OfferLabels.Num(); ++i)
 	{
 		const bool bHasOffer = Offers.IsValidIndex(i);

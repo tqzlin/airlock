@@ -16,6 +16,7 @@
 #include "Ship/CargoSlot.h"
 #include "Ship/ShipLine.h"
 #include "Voyage/VoyageSubsystem.h"
+#include "UI/VoyageBoardWidget.h"
 #include "TimerManager.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -264,6 +265,21 @@ bool FCargoDestroyedCarrierTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Destroyed carrier drops as loose"), Crate->GetCargoState()->State == ECargoState::Loose);
 	TestNull(TEXT("Crate no longer attached"), Crate->GetAttachParentActor());
 	TestTrue(TEXT("Dropped nearby"), FVector::Dist(Crate->GetActorLocation(), Before) < 200);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoUnbookedResultTest, "Airlock.Cargo.UnbookedSectionRecordsNothingAndResultText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoUnbookedResultTest::RunTest(const FString& Parameters)
+{
+	FCargoTestWorld Ship;
+	Ship.World->GetGameInstance()->Init();
+	Ship.Mode->RecordVoyageResult();
+	FVoyageResult Result;
+	TestFalse(TEXT("Ship entered without a clock records nothing"), Ship.World->GetGameInstance()->GetSubsystem<UVoyageSubsystem>()->GetLastVoyageResult(Result));
+	Result.CratesTotal = 4; Result.CratesIntact = 2; Result.ShipCondition = 99.7f; Result.Pay = 400;
+	TestEqual(TEXT("Hub board rounds only display hull"), UVoyageBoardWidget::DescribeResult(Result).ToString(), FString(TEXT("Last run: 2/4 crates intact - hull 100% - pay 400 cr")));
+	Ship.World->GetGameInstance()->Shutdown();
 	return true;
 }
 #endif
