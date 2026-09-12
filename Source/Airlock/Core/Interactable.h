@@ -27,4 +27,13 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
 	FText GetInteractPrompt() const;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
+	float GetInteractHoldSeconds() const;
+	virtual float GetInteractHoldSeconds_Implementation() const { return 0.f; }
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
+	void OnHoldComplete(APawn* Pawn);
+	virtual void OnHoldComplete_Implementation(APawn* Pawn) {}
+
 };

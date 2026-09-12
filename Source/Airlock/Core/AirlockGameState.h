@@ -4,7 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
+#include "Ship/ShipGraph.h"
 #include "AirlockGameState.generated.h"
+
+DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
 
 /**
  * Replicated state for the ship section (or station hub) this server instance is simulating.
@@ -51,6 +54,21 @@ public:
 	/** Clients derive the countdown from the replicated deadline and synchronized server time. */
 	UFUNCTION(BlueprintPure, Category = "Airlock|Voyage")
 	double GetVoyageSecondsRemaining() const;
+
+
+	UPROPERTY(ReplicatedUsing = OnRep_ShipGraph)
+	TArray<FShipModuleState> ShipModules;
+
+	UPROPERTY(ReplicatedUsing = OnRep_ShipGraph)
+	TArray<FShipLineState> ShipLines;
+
+	FOnShipGraphChanged OnShipGraphChanged;
+
+	/** Authority-only mirror; unchanged arrays are never rewritten. */
+	void PublishShipGraph(const FShipGraph& Graph);
+
+	UFUNCTION()
+	void OnRep_ShipGraph();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 };

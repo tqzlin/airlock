@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Voyage/VoyageSchedule.h"
+#include "Ship/ShipGraph.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -33,6 +34,12 @@ public:
 	/** Server-side console helper; only adjusts the voyage captured when this section started. */
 	void SetVoyageSecondsRemaining(float SecondsRemaining);
 
+	bool ShipSetLineFault(FName Id, EShipLineFault Fault);
+	bool ShipRepairLine(FName Id);
+	bool ShipDamageModule(FName Id, float Amount);
+	bool ShipRepairModule(FName Id, float Amount);
+	FString ShipSummary() const;
+
 protected:
 	/** Bound to every AAirlockDoor in the level. Decides whether the crossing becomes a level travel. */
 	UFUNCTION()
@@ -46,6 +53,12 @@ protected:
 	float TravelFadeDelay = 0.6f;
 
 private:
+	FShipGraph ShipGraph;
+	FTimerHandle ShipGraphTimer;
+	void BuildShipGraph();
+	void TickShipGraph();
+	void PublishShipGraph();
+
 	bool bTravelPending = false;
 	/** True for a level entered through an airlock: arrivals spawn at the section PlayerStart, never at a PIE start. */
 	bool bArrivedByAirlock = false;

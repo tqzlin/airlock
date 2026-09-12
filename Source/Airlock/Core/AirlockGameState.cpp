@@ -28,4 +28,23 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, bVoyageBooked);
 	DOREPLIFETIME(AAirlockGameState, VoyageEndServerTime);
 	DOREPLIFETIME(AAirlockGameState, bVoyageActive);
+	DOREPLIFETIME(AAirlockGameState, ShipModules);
+	DOREPLIFETIME(AAirlockGameState, ShipLines);
+}
+
+void AAirlockGameState::PublishShipGraph(const FShipGraph& Graph)
+{
+	if (!HasAuthority()) { return; }
+	const bool bModulesChanged = ShipModules != Graph.Modules();
+	const bool bLinesChanged = ShipLines != Graph.Lines();
+	if (!bModulesChanged && !bLinesChanged) { return; }
+	if (bModulesChanged) { ShipModules = Graph.Modules(); }
+	if (bLinesChanged) { ShipLines = Graph.Lines(); }
+	ForceNetUpdate();
+	OnRep_ShipGraph();
+}
+
+void AAirlockGameState::OnRep_ShipGraph()
+{
+	OnShipGraphChanged.Broadcast();
 }
