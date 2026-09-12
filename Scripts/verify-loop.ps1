@@ -8,15 +8,15 @@ $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'lib\mcp.ps1')
 function Compact($t) { ($t -replace '\s+', ' ') }
 function Short($t, $n) { $c = Compact $t; $c.Substring(0, [math]::Min($n, $c.Length)) }
-function Say($t) { Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $t" }
+function Write-Say($t) { Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $t" }
 
-try { Mcp-Init } catch { Say "MCP server not reachable on 127.0.0.1:8000 - open the editor first (Scripts\run-editor.bat)"; exit 2 }
-if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { Say 'PIE already running - stopping it first'; $null = Mcp-Call $TS_App 'StopPIE' @{}; Start-Sleep -Seconds 4 }
+try { Mcp-Init } catch { Write-Say "MCP server not reachable on 127.0.0.1:8000 - open the editor first (Scripts\run-editor.bat)"; exit 2 }
+if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { Write-Say 'PIE already running - stopping it first'; $null = Mcp-Call $TS_App 'StopPIE' @{}; Start-Sleep -Seconds 4 }
 $lvl = Mcp-Call $TS_Scene 'get_current_level' @{}
 if ($lvl.text -notmatch 'StationHub') {
-    Say "current level is $(Short $lvl.text 80); loading /Game/Maps/StationHub"
+    Write-Say "current level is $(Short $lvl.text 80); loading /Game/Maps/StationHub"
     $r = Mcp-Call $TS_Scene 'load_level' @{ level_path = '/Game/Maps/StationHub' }
-    if (-not $r.ok) { Say "load_level failed (dirty level?): $(Short $r.text 200)"; exit 2 }
+    if (-not $r.ok) { Write-Say "load_level failed (dirty level?): $(Short $r.text 200)"; exit 2 }
     Start-Sleep -Seconds 5
 }
 
@@ -27,15 +27,15 @@ try { $w = Mcp-Call $TS_Slate 'Windows' @{ action = 'list'; index = -1 }; $wins 
 $script:CmdFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'Saved\AgentConsole\commands.txt'
 New-Item -ItemType Directory -Force -Path (Split-Path $script:CmdFile -Parent) | Out-Null
 if (Test-Path $script:CmdFile) { Remove-Item $script:CmdFile -Force }
-function Console($cmd) {
+function Send-Console($cmd) {
     [IO.File]::WriteAllText($script:CmdFile, "$cmd`r`n", [Text.Encoding]::ASCII)
     $deadline = (Get-Date).AddSeconds(8)
     while ((Get-Date) -lt $deadline -and (Test-Path $script:CmdFile)) { Start-Sleep -Milliseconds 250 }
-    if (Test-Path $script:CmdFile) { Say "> $cmd  (NOT consumed within 8 s - is PIE running with the Airlock GameInstance?)" } else { Say "> $cmd" }
+    if (Test-Path $script:CmdFile) { Write-Say "> $cmd  (NOT consumed within 8 s - is PIE running with the Airlock GameInstance?)" } else { Write-Say "> $cmd" }
 }
 # Only log lines stamped after the run started count (the editor log keeps earlier PIE sessions). UE stamps in UTC.
 $script:RunStart = [DateTime]::UtcNow.AddSeconds(-5)
-function FreshLine($text, $pattern) {
+function Get-FreshLine($text, $pattern) {
     foreach ($m in [regex]::Matches($text, '\[(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2}):(\d{3})\]\[\s*\d+\][^\[]*')) {
         $line = $m.Value
         if ($line -notmatch $pattern) { continue }
@@ -45,51 +45,51 @@ function FreshLine($text, $pattern) {
     }
     return $null
 }
-function Where() {
-    Console 'AirlockWhere'; Start-Sleep -Seconds 1
+function Get-PawnWhere {
+    Send-Console 'AirlockWhere'; Start-Sleep -Seconds 1
     $l = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = 'LogAirlock'; pattern = 'Where:'; maxEntries = 3 }
-    $line = FreshLine $l.text 'Where:'
+    $line = Get-FreshLine $l.text 'Where:'
     $s = if ($line) { ($line -replace '.*Where: ', 'Where: ') -replace '"\]\}.*$', '' } else { 'Where: (no fresh line)' }
-    Say "  $s"; return $s
+    Write-Say "  $s"; return $s
 }
-function WaitLog($pattern, $seconds) {
+function Wait-LogLine($pattern, $seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
-    do { Start-Sleep -Seconds 3; $l = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = 'LogAirlock'; pattern = $pattern; maxEntries = 5 }; $hit = FreshLine $l.text $pattern } while ((Get-Date) -lt $deadline -and -not $hit)
+    do { Start-Sleep -Seconds 3; $l = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = 'LogAirlock'; pattern = $pattern; maxEntries = 5 }; $hit = Get-FreshLine $l.text $pattern } while ((Get-Date) -lt $deadline -and -not $hit)
     return [bool]$hit
 }
-function Capture($label) { $c = Mcp-Call $TS_App 'CaptureEditorImage' @{}; Say "  capture $label -> $(($c.images | Select-Object -First 1))" }
+function Save-Capture($label) { $c = Mcp-Call $TS_App 'CaptureEditorImage' @{}; Write-Say "  capture $label -> $(($c.images | Select-Object -First 1))" }
 
 $fail = @()
-Say 'StartPIE at the hub PlayerStart'
+Write-Say 'StartPIE at the hub PlayerStart'
 $null = Mcp-Call $TS_App 'StartPIE' @{ options = @{ bSimulate = $false; playMode = 'PlayMode_InViewPort'; warmupSeconds = 5; startTransform = @{ location = @{ x = -5640; y = 1560; z = 118 }; rotation = @{ pitch = 0; yaw = 0; roll = 0 }; scale = @{ x = 1; y = 1; z = 1 } } } }
 Start-Sleep -Seconds 8
-$w0 = Where
+$w0 = Get-PawnWhere
 if ($w0 -notmatch 'map=UEDPIE_\d+_StationHub' -or $w0 -notmatch 'pawn=\S+ at X=-56[3-4][0-9]\.\d+ Y=15[5-6][0-9]\.') { $fail += 'hub spawn not at PlayerStart_Hub' }
-Capture 'hub-spawn'
+Save-Capture 'hub-spawn'
 
-Console 'AirlockWarp -4700 1560 116'
-Console 'AirlockBook 0'
+Send-Console 'AirlockWarp -4700 1560 116'
+Send-Console 'AirlockBook 0'
 Start-Sleep -Seconds 2
-Console 'AirlockWarp -4265 1560 116'
-if (-not (WaitLog 'Section Hauler_Mk1' 45)) { $fail += 'no arrival on Hauler_Mk1 within 45 s' }
+Send-Console 'AirlockWarp -4265 1560 116'
+if (-not (Wait-LogLine 'Section Hauler_Mk1' 45)) { $fail += 'no arrival on Hauler_Mk1 within 45 s' }
 Start-Sleep -Seconds 8
-$w1 = Where
+$w1 = Get-PawnWhere
 if ($w1 -notmatch 'map=UEDPIE_\d+_Hauler_Mk1' -or $w1 -notmatch 'pawn=\S+ at X=-66[5-7][0-9]\.\d+ Y=15[5-6][0-9]\.') { $fail += 'ship arrival not at PlayerStart_Ship' }
-Capture 'ship-arrival'
+Save-Capture 'ship-arrival'
 
-Console 'AirlockWarp -7015 1560 116'
-if (-not (WaitLog 'travelling to /Game/Maps/StationHub' 45)) { $fail += 'return travel not triggered within 45 s' }
+Send-Console 'AirlockWarp -7015 1560 116'
+if (-not (Wait-LogLine 'travelling to /Game/Maps/StationHub' 45)) { $fail += 'return travel not triggered within 45 s' }
 Start-Sleep -Seconds 12
-$w2 = Where
+$w2 = Get-PawnWhere
 if ($w2 -notmatch 'map=UEDPIE_\d+_StationHub' -or $w2 -notmatch 'pawn=\S+ at X=-56[3-4][0-9]\.\d+ Y=15[5-6][0-9]\.') { $fail += 'hub return not at PlayerStart_Hub' }
-Capture 'hub-return'
+Save-Capture 'hub-return'
 $done = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = 'LogAirlock'; pattern = 'complete'; maxEntries = 5 }
-if (-not (FreshLine $done.text 'Voyage .* complete')) { $fail += 'no fresh "Voyage ... complete" in the log' }
+if (-not (Get-FreshLine $done.text 'Voyage .* complete')) { $fail += 'no fresh "Voyage ... complete" in the log' }
 
 $null = Mcp-Call $TS_App 'StopPIE' @{}
 Start-Sleep -Seconds 2
 $errs = Mcp-Call $TS_Logs 'GetLogEntries' @{ category = ''; pattern = 'Error:'; maxEntries = 5 }
-if ($errs.text -match 'Error:') { Say "errors in the log during the run: $(Short $errs.text 400)" }
+if ($errs.text -match 'Error:') { Write-Say "errors in the log during the run: $(Short $errs.text 400)" }
 
-if ($fail.Count -eq 0) { Say 'LOOP OK: hub spawn -> booked -> Dock B -> Hauler_Mk1 PlayerStart -> exit -> hub PlayerStart, voyage complete'; exit 0 }
-else { Say ('LOOP FAILED: ' + ($fail -join '; ')); exit 1 }
+if ($fail.Count -eq 0) { Write-Say 'LOOP OK: hub spawn -> booked -> Dock B -> Hauler_Mk1 PlayerStart -> exit -> hub PlayerStart, voyage complete'; exit 0 }
+else { Write-Say ('LOOP FAILED: ' + ($fail -join '; ')); exit 1 }
