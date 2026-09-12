@@ -76,7 +76,7 @@ This file is the shared brief for every agent that works in this repo (Claude, G
 - Prefer C++ for systems and Blueprints only for content glue (visuals, tuning, prototyping). Anything that must be deterministic or replicated is C++.
 - Every new system gets an automation test (``IMPLEMENT_SIMPLE_AUTOMATION_TEST``) or a headless smoke test that ``Scripts\run-tests.bat`` can run.
 - Never commit ``Binaries/``, ``Intermediate/``, ``Saved/``, ``DerivedDataCache/``, ``*.slnx`` (already ignored). Commit ``.uasset``/``.umap`` through LFS only.
-- Small, single-purpose commits on ``main`` for now; describe the gameplay effect, not the file list.
+- Small, single-purpose commits; describe the gameplay effect, not the file list. Task work goes on `<agent>/<task>` branches and reaches ``main`` through review (see the working agreement above); Claude's own maintenance commits (docs, agent tooling) may land on ``main`` directly.
 
 ## Studio layout
 - Claude (Fable): reasoning, architecture, tech-lead review, this repo's C++ so far.

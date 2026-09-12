@@ -69,6 +69,12 @@ touches nothing the door/travel work depends on.
 - The existing tests' expectations, the `TodaySeed` maths, `MakeVoyageSpec` determinism.
 - Anything under `Content/ModSci*` or `Content/StarfieldFree` (pack assets).
 
+## Edge cases (answers to the questions Astra raised in its read-through)
+- Durations under 60 s (tests, `AirlockVoyageClock`): the "one minute" entry sits at `max(0, Duration - 60)`; entries with equal times keep list order; nothing is dropped.
+- `AirlockVoyageClock`: clamp the argument to `[0, DurationSeconds]`; ignore NaN/inf (log and return). Entries whose time is already past after the move fire once, in order, on the next timer tick.
+- Re-booking aboard a ship (`ServerChooseVoyage` is not gated by section today) is out of scope: the clock follows the voyage that was pending when the level started; do not change `ServerChooseVoyage` or `RequestVoyage` in this task, note it in the report if it bites.
+- `Scripts\verify-loop.ps1` only trusts log lines stamped after the run starts; if you extend it, keep that rule.
+
 ## Notes and hints
 - `UVoyageSubsystem` (GameInstance subsystem) survives travel and holds the pending voyage; `ClearPendingVoyage` is
   what `HandleTransitionRequested` calls for a hub target - the auto-return must end up in the same state.
