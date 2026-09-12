@@ -5,9 +5,10 @@
 #include "IncidentSchedule.generated.h"
 
 struct FShipLayout;
+struct FCargoLayout;
 
 UENUM()
-enum class EIncidentType : uint8 { CoolantLeak, PowerShort, ModuleDamage };
+enum class EIncidentType : uint8 { CoolantLeak, PowerShort, ModuleDamage, CargoShift };
 
 USTRUCT()
 struct AIRLOCK_API FIncidentSpec
@@ -39,11 +40,14 @@ struct AIRLOCK_API FIncidentSchedule
 	static constexpr float ShortWindowEndFraction = 0.75f;
 	static constexpr float ReferenceDuration = 1200.f;
 	static constexpr int32 SeedSalt = 0x1AC1DE17;
+	static constexpr float CargoShiftMinFraction = .4f;
+	static constexpr int32 CargoShiftMidMinClamps = 2;
+	static constexpr int32 ClimaxEntryCount = 2;
 
-	static TArray<FIncidentSpec> Build(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount);
+	static TArray<FIncidentSpec> Build(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount, const FCargoLayout* Cargo = nullptr);
 	/** Returns the end of the due range [NextEntry, result); a backward move never rewinds the cursor. */
 	static int32 FindNextUnfired(const TArray<FIncidentSpec>& Entries, int32 NextEntry, double ElapsedSeconds);
-	static TArray<FName> Targets(const FShipLayout& Layout, EIncidentType Type);
+	static TArray<FName> Targets(const FShipLayout& Layout, EIncidentType Type, const FCargoLayout* Cargo = nullptr);
 	static FText MakeCaptainLine(EIncidentType Type, FName Target, FName Captain);
 	static const TCHAR* TypeName(EIncidentType Type);
 };

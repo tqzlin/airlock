@@ -91,3 +91,17 @@ int32 UVoyageSubsystem::TodaySeed()
 {
 	return (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetDays();
 }
+
+void UVoyageSubsystem::SetLastVoyageResult(const FVoyageResult& Result)
+{
+	const UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (World && World->GetNetMode() == NM_Client) { return; }
+	LastVoyageResult = Result;
+	bHasLastVoyageResult = true;
+}
+bool UVoyageSubsystem::GetLastVoyageResult(FVoyageResult& OutResult) const
+{
+	if (!bHasLastVoyageResult) { return false; }
+	OutResult = LastVoyageResult;
+	return true;
+}

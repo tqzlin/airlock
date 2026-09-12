@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "Voyage/IncidentSchedule.h"
 #include "Ship/ShipLayouts.h"
+#include "Ship/CargoLayouts.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -165,6 +166,85 @@ bool FIncidentCursorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Exhausted schedule stays exhausted"), FIncidentSchedule::FindNextUnfired(Entries, Next, 1200), Next);
 	const auto Zero = FIncidentSchedule::Build(IncidentVoyage(7, 0), *ShipLayouts::Find(TEXT("Hauler_Mk1")), 1);
 	TestEqual(TEXT("Equal-time entries all consumed"), FIncidentSchedule::FindNextUnfired(Zero, 0, 0), Zero.Num());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoIncidentScheduleTest, "Airlock.Cargo.ShiftScheduleDeterminismAndClimax",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoIncidentScheduleTest::RunTest(const FString& Parameters)
+{
+	const auto& Ship = *ShipLayouts::Find(TEXT("Hauler_Mk1"));
+	const auto* Cargo = CargoLayouts::Find(TEXT("Hauler_Mk1"));
+	const auto Targets = FIncidentSchedule::Targets(Ship, EIncidentType::CargoShift, Cargo);
+	TestEqual(TEXT("Only three clamps eligible"), Targets.Num(), 3);
+	TestFalse(TEXT("Never rack"), Targets.Contains(TEXT("ColdRack")));
+	bool bSawMiddleShift = false;
+	TSet<int32> ClimaxPositions;
+	for (int32 Seed = 0; Seed < 100; ++Seed)
+	{
+		for (int32 Crew : { 1, 4, 9 })
+		{
+			const auto Spec = IncidentVoyage(Seed);
+			const auto Plain = FIncidentSchedule::Build(Spec, Ship, Crew);
+			const auto Entries = FIncidentSchedule::Build(Spec, Ship, Crew, Cargo);
+			if (!TestEqual(TEXT("Cargo replaces, never adds"), Entries.Num(), Plain.Num())) { return false; }
+			TestTrue(TEXT("Deterministic cargo schedule"), SameIncidents(Entries, FIncidentSchedule::Build(Spec, Ship, Crew, Cargo)));
+			TestTrue(TEXT("Teaching leak stays first"), Entries[0].Type == EIncidentType::CoolantLeak);
+			int32 PairShifts = 0;
+			FName Previous;
+			for (int32 I = 0; I < Entries.Num(); ++I)
+			{
+				const auto& Entry = Entries[I];
+				TestTrue(TEXT("No consecutive target repeat"), Entry.TargetId != Previous);
+				Previous = Entry.TargetId;
+				if (Entry.Type != EIncidentType::CargoShift) { continue; }
+				TestTrue(TEXT("No shift before forty percent"), Entry.AtSeconds >= Spec.DurationSeconds * FIncidentSchedule::CargoShiftMinFraction);
+				TestTrue(TEXT("Clamp target"), Targets.Contains(Entry.TargetId));
+				TestEqual(TEXT("No magnitude"), Entry.Magnitude, 0.f);
+				TestTrue(TEXT("Captain names shifted clamp"), Entry.CaptainLine.ToString().Contains(Entry.TargetId.ToString()) && Entry.CaptainLine.ToString().Contains(TEXT("Captain TestCaptain here. Hold on - cargo's shifted")));
+				if (I >= Entries.Num() - 2) { ++PairShifts; ClimaxPositions.Add(I - (Entries.Num() - 2)); }
+				else { bSawMiddleShift = true; }
+			}
+			TestEqual(TEXT("Exactly one climax shift, other normal"), PairShifts, 1);
+			for (const auto& Entry : Plain) { TestTrue(TEXT("No cargo path has no shifts"), Entry.Type != EIncidentType::CargoShift); }
+		}
+	}
+	TestTrue(TEXT("Middle shift possible"), bSawMiddleShift);
+	TestEqual(TEXT("Extra draw can select either climax position"), ClimaxPositions.Num(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoIncidentSingleClampTest, "Airlock.Cargo.SingleClampAndAbsentCargoSchedules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoIncidentSingleClampTest::RunTest(const FString& Parameters)
+{
+	const auto& Ship = *ShipLayouts::Find(TEXT("Hauler_Mk1"));
+	FCargoLayout Single = *CargoLayouts::Find(TEXT("Hauler_Mk1"));
+	Single.Slots.RemoveAll([](const auto& S) { return !S.bRack && S.Id != TEXT("Clamp_1"); });
+	FCargoLayout NoClamps = Single;
+	NoClamps.Slots.RemoveAll([](const auto& S) { return !S.bRack; });
+	for (int32 Seed = 0; Seed < 100; ++Seed)
+	{
+		for (float Duration : { 0.f, 30.f, 239.f, 240.f, 600.f, 1200.f })
+		{
+			const auto Spec = IncidentVoyage(Seed, Duration);
+			const auto Plain = FIncidentSchedule::Build(Spec, Ship, 9);
+			TestTrue(TEXT("Rack-only layout consumes no extra random draws"), SameIncidents(Plain, FIncidentSchedule::Build(Spec, Ship, 9, &NoClamps)));
+			const auto Entries = FIncidentSchedule::Build(Spec, Ship, 9, &Single);
+			if (!TestEqual(TEXT("Single clamp retains count"), Entries.Num(), Plain.Num())) { return false; }
+			int32 Shifts = 0;
+			for (int32 I = 0; I < Entries.Num(); ++I)
+			{
+				if (Entries[I].Type == EIncidentType::CargoShift)
+				{
+					++Shifts;
+					TestTrue(TEXT("Only climax, never middle"), I >= Entries.Num() - 2);
+					TestEqual(TEXT("Only clamp"), Entries[I].TargetId, FName(TEXT("Clamp_1")));
+				}
+			}
+			TestEqual(TEXT("One shift"), Shifts, 1);
+		}
+	}
 	return true;
 }
 #endif

@@ -24,6 +24,8 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
+#include "Ship/CargoCrate.h"
+#include "Ship/CargoSlot.h"
 
 AAirlockPlayerController::AAirlockPlayerController()
 {
@@ -231,6 +233,7 @@ void AAirlockPlayerController::OpenVoyageBoard()
 		return;
 	}
 	BoardWidget->SetOffers(Voyages->GetOfferedVoyages(GS->DaySeed));
+	BoardWidget->SetLastVoyageResult(GS->LastVoyageResult, GS->bHasLastVoyageResult);
 	BoardWidget->OnVoyageChosen.AddDynamic(this, &AAirlockPlayerController::HandleVoyageChosen);
 	BoardWidget->OnClosed.AddDynamic(this, &AAirlockPlayerController::HandleBoardClosed);
 	BoardWidget->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));
@@ -434,9 +437,10 @@ void AAirlockPlayerController::ServerIncident_Implementation(const FString& Type
 	if (Type.Equals(TEXT("CoolantLeak"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CoolantLeak; }
 	else if (Type.Equals(TEXT("PowerShort"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::PowerShort; }
 	else if (Type.Equals(TEXT("ModuleDamage"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::ModuleDamage; }
+	else if (Type.Equals(TEXT("CargoShift"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CargoShift; }
 	else
 	{
-		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s rejected: expected CoolantLeak, PowerShort or ModuleDamage"), *Type);
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s rejected: expected CoolantLeak, PowerShort, ModuleDamage or CargoShift"), *Type);
 		return;
 	}
 	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
@@ -456,4 +460,62 @@ void AAirlockPlayerController::ServerIncidentSchedule_Implementation()
 	const UIncidentDirectorComponent* Director = GM ? GM->GetIncidentDirector() : nullptr;
 	if (Director) { Director->LogSchedule(); }
 	else { UE_LOG(LogAirlock, Log, TEXT("Incident schedule empty: no active incident director")); }
+}
+
+void AAirlockPlayerController::AirlockCargoStatus() { ServerCargoStatus(); }
+void AAirlockPlayerController::AirlockCarry(FName CrateId) { ServerCarryById(CrateId); }
+void AAirlockPlayerController::AirlockDrop() { ServerDropCargo(); }
+void AAirlockPlayerController::AirlockPlace(FName SlotId) { ServerPlaceById(SlotId); }
+void AAirlockPlayerController::AirlockCrateHeat(FName CrateId, float Temperature) { ServerCrateHeat(CrateId, Temperature); }
+void AAirlockPlayerController::AirlockTally() { ServerCargoTally(); }
+
+void AAirlockPlayerController::ServerCargoStatus_Implementation()
+{
+	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
+	{
+		TArray<FString> Lines;
+		GM->CargoSummary().ParseIntoArrayLines(Lines);
+		for (const auto& Line : Lines) { UE_LOG(LogAirlock, Log, TEXT("%s"), *Line); }
+	}
+	else { UE_LOG(LogAirlock, Log, TEXT("Cargo status rejected: no game mode")); }
+}
+void AAirlockPlayerController::ServerCarryById_Implementation(FName CrateId)
+{
+	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: no crew pawn")); return; }
+	for (TActorIterator<ACargoCrate> It(GetWorld()); It; ++It)
+	{
+		if (It->GetCargoId() == CrateId) { Crew->ServerPickUp(*It); return; }
+	}
+	UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: crate %s not found"), *CrateId.ToString());
+}
+void AAirlockPlayerController::ServerDropCargo_Implementation()
+{
+	if (auto* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerPutDown(); }
+	else { UE_LOG(LogAirlock, Log, TEXT("PutDown rejected: no crew pawn")); }
+}
+void AAirlockPlayerController::ServerPlaceById_Implementation(FName SlotId)
+{
+	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Place rejected: no crew pawn")); return; }
+	for (TActorIterator<ACargoSlot> It(GetWorld()); It; ++It)
+	{
+		if (It->GetSlotId() == SlotId) { Crew->ServerPlace(*It); return; }
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Place rejected: slot %s not found"), *SlotId.ToString());
+}
+void AAirlockPlayerController::ServerCrateHeat_Implementation(FName CrateId, float Temperature)
+{
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	const bool bOk = GM && GM->CargoSetTemperature(CrateId, Temperature);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockCrateHeat %s %.2f accepted=%d%s"), *CrateId.ToString(), Temperature, bOk,
+		bOk ? TEXT("") : TEXT(" (requires a live volatile crate and finite temperature in 0..100)"));
+}
+void AAirlockPlayerController::ServerCargoTally_Implementation()
+{
+	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Tally now: %s"), *GM->CargoTally().Summary());
+	}
+	else { UE_LOG(LogAirlock, Log, TEXT("Tally rejected: no game mode")); }
 }

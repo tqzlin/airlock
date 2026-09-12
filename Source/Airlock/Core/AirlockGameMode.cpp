@@ -16,6 +16,9 @@
 #include "Ship/ShipLayouts.h"
 #include "Ship/ShipModule.h"
 #include "Ship/ShipLine.h"
+#include "Ship/CargoCrate.h"
+#include "Ship/CargoSlot.h"
+#include "Ship/CargoLayouts.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
@@ -84,6 +87,10 @@ void AAirlockGameMode::InitGameState()
 	GS->CurrentSectionId = FName(*MapName);
 	GS->DaySeed = UVoyageSubsystem::TodaySeed();
 	GS->bVoyageBooked = Voyages && Voyages->HasPendingVoyage();
+	if (GS->CurrentSectionId == HubSectionId && Voyages)
+	{
+		GS->bHasLastVoyageResult = Voyages->GetLastVoyageResult(GS->LastVoyageResult);
+	}
 
 	FVoyageSpec Spec;
 	if (Voyages && Voyages->GetPendingVoyage(Spec))
@@ -101,6 +108,7 @@ void AAirlockGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	BuildShipGraph();
+	BuildCargo();
 
 	int32 Bound = 0;
 	for (TActorIterator<AAirlockDoor> It(GetWorld()); It; ++It)
@@ -119,6 +127,7 @@ void AAirlockGameMode::BeginPlay()
 	if (GS && GS->CurrentSectionId != HubSectionId && Voyages && Voyages->GetPendingVoyage(ActiveVoyage))
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
+		bStartedVoyageClock = true;
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -133,7 +142,7 @@ void AAirlockGameMode::BeginPlay()
 			}
 			IncidentDirector = NewObject<UIncidentDirectorComponent>(this, TEXT("IncidentDirector"));
 			IncidentDirector->RegisterComponent();
-			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount));
+			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount), CargoLayouts::Find(GS->CurrentSectionId));
 		}
 		ScheduleNextVoyageEvent();
 	}
@@ -164,6 +173,7 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 	}
 	if (bToHub && Voyages)
 	{
+		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
 
@@ -303,6 +313,7 @@ void AAirlockGameMode::ReturnToHub()
 	}
 	if (UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
 	{
+		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
 	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
@@ -387,6 +398,7 @@ void AAirlockGameMode::TickShipGraph()
 	if (!HasAuthority() || !GS || !GS->bVoyageActive) { return; }
 	ShipGraph.Tick(0.25f);
 	PublishShipGraph();
+	if (CargoModel.Tick(0.25f, ActiveVoyage.DurationSeconds - GS->GetVoyageSecondsRemaining())) { PublishCargo(); }
 }
 
 void AAirlockGameMode::PublishShipGraph()
@@ -432,3 +444,114 @@ bool AAirlockGameMode::ShipRepairModule(FName Id, float Amount)
 	return true;
 }
 FString AAirlockGameMode::ShipSummary() const { return ShipGraph.Summary(); }
+
+void AAirlockGameMode::BuildCargo()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	const FCargoLayout* Layout = GS ? CargoLayouts::Find(GS->CurrentSectionId) : nullptr;
+	if (!HasAuthority() || !Layout) { return; }
+	CargoModel.Build(*Layout);
+	PublishCargo();
+	for (const auto& Spec : Layout->Slots)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Actor = GetWorld()->SpawnActor<ACargoSlot>(ACargoSlot::StaticClass(), Spec.Transform, Params))
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false);
+			Actor->SetFolderPath(TEXT("Cargo"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	}
+	for (const auto& Spec : Layout->Crates)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Actor = GetWorld()->SpawnActor<ACargoCrate>(ACargoCrate::StaticClass(), Spec.Transform, Params))
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false);
+			Actor->SetFolderPath(TEXT("Cargo"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	}
+	// A cargo-only section still uses the shared systems timer.
+	if (!GetWorldTimerManager().IsTimerActive(ShipGraphTimer))
+	{
+		GetWorldTimerManager().SetTimer(ShipGraphTimer, this, &AAirlockGameMode::TickShipGraph, .25f, true);
+	}
+}
+void AAirlockGameMode::PublishCargo()
+{
+	AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS) { return; }
+	TArray<FCargoCrateState> Mirror = CargoModel.Crates();
+	const float Warn = FCargoRates().WarnTemperature;
+	for (auto& State : Mirror)
+	{
+		State.Temperature = FMath::FloorToFloat(State.Temperature);
+		const auto* Old = GS->Cargo.FindByPredicate([&State](const auto& C) { return C.Id == State.Id; });
+		if (!Old || Old->State != State.State || ((Old->Temperature >= Warn) != (State.Temperature >= Warn)))
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Cargo %s %s temp=%d"), *State.Id.ToString(), FCargoModel::StateName(State.State), FMath::FloorToInt(State.Temperature));
+		}
+	}
+	GS->PublishCargo(Mirror);
+}
+bool AAirlockGameMode::CargoPickUp(FName Id)
+{
+	if (!HasAuthority() || !CargoModel.PickUp(Id)) { return false; }
+	PublishCargo(); return true;
+}
+bool AAirlockGameMode::CargoPutDown(FName Id)
+{
+	if (!HasAuthority() || !CargoModel.PutDown(Id)) { return false; }
+	PublishCargo(); return true;
+}
+bool AAirlockGameMode::CargoPlace(FName Crate, FName Slot)
+{
+	if (!HasAuthority() || !CargoModel.Place(Crate, Slot)) { return false; }
+	PublishCargo(); return true;
+}
+bool AAirlockGameMode::CargoRelease(FName Slot)
+{
+	if (!HasAuthority() || !CargoModel.Release(Slot)) { return false; }
+	PublishCargo(); return true;
+}
+bool AAirlockGameMode::CargoSetTemperature(FName Id, float Temperature)
+{
+	if (!HasAuthority() || !CargoModel.SetTemperature(Id, Temperature)) { return false; }
+	PublishCargo(); return true;
+}
+FName AAirlockGameMode::CargoFirstFilledClamp() const
+{
+	for (const auto& Slot : CargoModel.Slots())
+	{
+		const auto* Crate = CargoModel.FindCrate(Slot.CrateId);
+		if (!Slot.bRack && Crate && Crate->State == ECargoState::Secured) { return Slot.Id; }
+	}
+	return NAME_None;
+}
+FVoyageResult AAirlockGameMode::CargoTally() const { return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage); }
+FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
+
+void AAirlockGameMode::RecordVoyageResult()
+{
+	if (!HasAuthority() || !bStartedVoyageClock || bRecordedVoyageResult) { return; }
+	if (auto* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
+	{
+		const FVoyageResult Result = CargoTally();
+		Voyages->SetLastVoyageResult(Result);
+		bRecordedVoyageResult = true;
+		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s"), *Result.Summary());
+	}
+}

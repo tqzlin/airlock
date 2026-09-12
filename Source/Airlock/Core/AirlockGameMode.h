@@ -6,6 +6,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "Voyage/VoyageSchedule.h"
 #include "Ship/ShipGraph.h"
+#include "Ship/CargoModel.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -40,6 +41,15 @@ public:
 	bool ShipDamageModule(FName Id, float Amount);
 	bool ShipRepairModule(FName Id, float Amount);
 	FString ShipSummary() const;
+	bool CargoPickUp(FName Id);
+	bool CargoPutDown(FName Id);
+	bool CargoPlace(FName Crate, FName Slot);
+	bool CargoRelease(FName Slot);
+	bool CargoSetTemperature(FName Id, float Temperature);
+	FName CargoFirstFilledClamp() const;
+	FVoyageResult CargoTally() const;
+	FString CargoSummary() const;
+	void RecordVoyageResult();
 	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
 protected:
@@ -59,6 +69,9 @@ private:
 	TObjectPtr<UIncidentDirectorComponent> IncidentDirector;
 
 	FShipGraph ShipGraph;
+	FCargoModel CargoModel;
+	void BuildCargo();
+	void PublishCargo();
 	FTimerHandle ShipGraphTimer;
 	void BuildShipGraph();
 	void TickShipGraph();
@@ -70,6 +83,8 @@ private:
 	FTimerHandle TravelTimer;
 
 	FVoyageSpec ActiveVoyage;
+	bool bStartedVoyageClock = false;
+	bool bRecordedVoyageResult = false;
 	TArray<FVoyageAnnouncement> CaptainSchedule;
 	int32 NextCaptainEntry = 0;
 	FTimerHandle VoyageTimer;

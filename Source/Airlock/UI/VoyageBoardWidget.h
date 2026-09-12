@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Voyage/VoyageTypes.h"
+#include "Ship/CargoModel.h"
 #include "VoyageBoardWidget.generated.h"
 
 class UBorder;
@@ -30,6 +31,8 @@ public:
 
 	/** Replaces the status line under the title (e.g. "Booked: Mining run - proceed to Dock B"). */
 	void SetStatus(const FText& InStatus);
+	void SetLastVoyageResult(const FVoyageResult& Result, bool bHasResult);
+	static FText DescribeResult(const FVoyageResult& Result);
 
 	UPROPERTY(BlueprintAssignable, Category = "Airlock|Voyage")
 	FOnVoyageChosen OnVoyageChosen;
@@ -47,11 +50,14 @@ protected:
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> Column;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Title;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> ResultLabel;
 	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> OfferButtons;
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> OfferLabels;
 	UPROPERTY(Transient) TObjectPtr<UButton> CloseButton;
 
 	UPROPERTY(Transient) TArray<FVoyageSpec> Offers;
+	FVoyageResult LastResult;
+	bool bHasLastResult = false;
 
 	UFUNCTION() void HandleOffer0();
 	UFUNCTION() void HandleOffer1();

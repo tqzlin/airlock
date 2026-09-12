@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Voyage/VoyageTypes.h"
+#include "Ship/CargoModel.h"
 #include "VoyageSubsystem.generated.h"
 
 /**
@@ -45,10 +46,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Airlock|Voyage")
 	void ClearPendingVoyage();
 
+	void SetLastVoyageResult(const FVoyageResult& Result);
+	bool GetLastVoyageResult(FVoyageResult& OutResult) const;
+
 	/** Days since the Unix epoch in UTC: the same on every machine on the same day. */
 	static int32 TodaySeed();
 
 private:
 	TMap<FGuid, FVoyageSpec> ActiveVoyages;
 	FGuid PendingVoyageId;
+	FVoyageResult LastVoyageResult;
+	bool bHasLastVoyageResult = false;
 };

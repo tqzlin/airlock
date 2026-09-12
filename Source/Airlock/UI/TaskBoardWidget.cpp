@@ -10,9 +10,25 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Core/AirlockGameState.h"
 
-TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines)
+TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
+	const TArray<FCargoCrateState>& Cargo)
 {
 	TArray<FTaskBoardRow> Rows;
+	const float Warn = FCargoRates().WarnTemperature;
+	TArray<FCargoCrateState> Heating;
+	for (const auto& Crate : Cargo)
+	{
+		if (Crate.bVolatile && Crate.Temperature >= Warn && Crate.State != ECargoState::Racked && Crate.State != ECargoState::Vented)
+		{
+			Heating.Add(Crate);
+		}
+	}
+	Heating.StableSort([](const auto& A, const auto& B) { return A.Temperature > B.Temperature; });
+	for (const auto& Crate : Heating)
+	{
+		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "TaskCoolCargo", "Cool crate {0} - {1}C"),
+			FText::FromName(Crate.Id), FText::AsNumber(FMath::FloorToInt(Crate.Temperature))), Crate.Temperature >= 80.f });
+	}
 	auto AddModules = [&](EShipModuleStatus Status)
 	{
 		for (const FShipModuleState& Module : Modules)
@@ -31,6 +47,13 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 		Rows.Add({ FText::Format(Pattern, FText::FromName(Line.Id)), false });
 	}
 	AddModules(EShipModuleStatus::Degraded);
+	for (const auto& Crate : Cargo)
+	{
+		if (Crate.State == ECargoState::Loose && (!Crate.bVolatile || Crate.Temperature < Warn))
+		{
+			Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "TaskSecureCargo", "Secure crate {0}"), FText::FromName(Crate.Id)), false });
+		}
+	}
 	if (Rows.Num() > MaxTaskRows)
 	{
 		const int32 More = Rows.Num() - MaxTaskRows;
@@ -107,7 +130,7 @@ void UTaskBoardWidget::RefreshRows()
 	TaskRows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
-	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines))
+	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(Row.Text);

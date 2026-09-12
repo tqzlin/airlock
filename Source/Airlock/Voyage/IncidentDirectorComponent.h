@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "Voyage/IncidentSchedule.h"
 #include "Ship/ShipLayouts.h"
+#include "Ship/CargoLayouts.h"
 #include "IncidentDirectorComponent.generated.h"
 
 /** Server-only second timer chain alongside the captain's fixed voyage announcements. */
@@ -13,7 +14,7 @@ class AIRLOCK_API UIncidentDirectorComponent : public UActorComponent
 	GENERATED_BODY()
 public:
 	UIncidentDirectorComponent();
-	void StartVoyage(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount);
+	void StartVoyage(const FVoyageSpec& Spec, const FShipLayout& Layout, int32 CrewCount, const FCargoLayout* Cargo = nullptr);
 	void Reschedule();
 	/** Own timer callback; also flushed by the clock before docking, irrespective of equal-time timer order. */
 	void FireDueIncidents();
@@ -29,6 +30,8 @@ protected:
 private:
 	FVoyageSpec Voyage;
 	FShipLayout ShipLayout;
+	FCargoLayout CargoLayout;
+	bool bHasCargoLayout = false;
 	TArray<FIncidentSpec> Schedule;
 	int32 NextEntry = 0;
 	bool bStarted = false;
