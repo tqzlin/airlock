@@ -18,3 +18,7 @@ here. Do not move or rename pack folders after import (Fab re-adds create redire
   pack folders (see Content/Airlock/...) so it IS versioned.
 - When a pack is updated on Fab, bump the "Claimed" date here and note anything that changed in the module grid.
 - Reference: docs/airlock-asset-architecture-2026-09.md (one architectural family; grid + door standard).
+
+## Post-import step: StarfieldFree collision
+
+The sky sphere meshes used by `BP_Starfield_Stars_Free` / `BP_Starfield_bgNebula_Free` ship with collision. Any pawn spawned inside them is depenetrated to the sphere surface (X = -6.9e8) - warps look fine, spawns and level arrivals do not. After importing the pack, run `StaticMeshTools.remove_collisions` on those two meshes (agent script 133) and save them.
