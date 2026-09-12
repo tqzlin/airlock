@@ -192,16 +192,23 @@ bool FIncidentDockingJumpTest::RunTest(const FString& Parameters)
 
 namespace
 {
+/** Unbuffered (CanBeUsedOnAnyThread) so the redirector hands us every line on the logging thread itself instead
+ *  of queueing it for the dedicated log thread - a synchronous test cannot wait for that queue. */
 class FCargoIncidentLogCapture : public FOutputDevice
 {
 public:
-	FString Lines;
 	FCargoIncidentLogCapture() { GLog->AddOutputDevice(this); }
 	~FCargoIncidentLogCapture() { GLog->RemoveOutputDevice(this); }
+	virtual bool CanBeUsedOnAnyThread() const override { return true; }
+	virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
 	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
 	{
-		if (Category == TEXT("LogAirlock")) { Lines += V; Lines += TEXT("\n"); }
+		if (Category == TEXT("LogAirlock")) { FScopeLock Lock(&Mutex); Lines += V; Lines += TEXT("\n"); }
 	}
+	FString Captured() const { FScopeLock Lock(&Mutex); return Lines; }
+private:
+	mutable FCriticalSection Mutex;
+	FString Lines;
 };
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoIncidentApplyTest, "Airlock.Cargo.DirectorReleasesFilledClampAndSkipsEmpty",
@@ -214,8 +221,10 @@ bool FCargoIncidentApplyTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Shift releases even nonvolatile crate"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("Clamp_2")));
 	TestTrue(TEXT("Crate now loose and slot cleared"), Ship.State->Cargo[0].State == ECargoState::Loose && Ship.State->Cargo[0].SlotId.IsNone());
 	TestFalse(TEXT("Empty clamp skipped"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("Clamp_2")));
-	TestTrue(TEXT("Empty clamp reason logged"), Capture.Lines.Contains(TEXT("skipped: clamp empty")));
-	TestTrue(TEXT("Shift magnitude unused"), Capture.Lines.Contains(TEXT("Incident CargoShift Clamp_2 (0.00)")));
+	GLog->Flush();
+	const FString Logged = Capture.Captured();
+	TestTrue(TEXT("Empty clamp reason logged"), Logged.Contains(TEXT("skipped: clamp empty")));
+	TestTrue(TEXT("Shift magnitude unused"), Logged.Contains(TEXT("Incident CargoShift Clamp_2 (0.00)")));
 	TestFalse(TEXT("Rack never shifts"), Ship.Director->FireNow(EIncidentType::CargoShift, TEXT("ColdRack")));
 	Ship.Mode->CargoPickUp(TEXT("C2")); Ship.Mode->CargoPlace(TEXT("C2"), TEXT("Clamp_3"));
 	TestTrue(TEXT("Omitted target finds filled clamp"), Ship.Director->FireNow(EIncidentType::CargoShift));
