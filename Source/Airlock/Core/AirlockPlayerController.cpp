@@ -15,7 +15,9 @@
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "UI/CaptainLineWidget.h"
+#include "UI/TaskBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
+#include "Voyage/IncidentDirectorComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
@@ -103,12 +105,32 @@ void AAirlockPlayerController::BeginPlay()
 
 void AAirlockPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (TaskBoardWidget)
+	{
+		TaskBoardWidget->RemoveFromParent();
+		TaskBoardWidget = nullptr;
+	}
 	if (CaptainWidget)
 	{
 		CaptainWidget->RemoveFromParent();
 		CaptainWidget = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void AAirlockPlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	if (!IsLocalController() || !GetLocalPlayer()) { return; }
+	if (!TaskBoardWidget)
+	{
+		TaskBoardWidget = CreateWidget<UTaskBoardWidget>(this, UTaskBoardWidget::StaticClass());
+		if (TaskBoardWidget) { TaskBoardWidget->AddToViewport(4); }
+	}
+	if (TaskBoardWidget)
+	{
+		TaskBoardWidget->UpdateState(GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr);
+	}
 }
 
 void AAirlockPlayerController::ClientCaptainSays_Implementation(const FText& Line)
@@ -355,4 +377,41 @@ void AAirlockPlayerController::ServerReleaseHold_Implementation()
 {
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockRelease"));
 	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerEndHold(); }
+}
+
+void AAirlockPlayerController::AirlockIncident(FString Type, FName TargetId, float Magnitude)
+{
+	ServerIncident(Type, TargetId, Magnitude);
+}
+
+void AAirlockPlayerController::AirlockIncidentSchedule() { ServerIncidentSchedule(); }
+
+void AAirlockPlayerController::ServerIncident_Implementation(const FString& Type, FName TargetId, float Magnitude)
+{
+	EIncidentType Parsed;
+	if (Type.Equals(TEXT("CoolantLeak"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CoolantLeak; }
+	else if (Type.Equals(TEXT("PowerShort"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::PowerShort; }
+	else if (Type.Equals(TEXT("ModuleDamage"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::ModuleDamage; }
+	else
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s rejected: expected CoolantLeak, PowerShort or ModuleDamage"), *Type);
+		return;
+	}
+	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	UIncidentDirectorComponent* Director = GM ? GM->GetIncidentDirector() : nullptr;
+	if (!Director)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident rejected: no active incident director"));
+		return;
+	}
+	const bool bApplied = Director->FireNow(Parsed, TargetId, Magnitude);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockIncident %s %s %.2f accepted=%d"), *Type, *TargetId.ToString(), Magnitude, bApplied);
+}
+
+void AAirlockPlayerController::ServerIncidentSchedule_Implementation()
+{
+	const AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	const UIncidentDirectorComponent* Director = GM ? GM->GetIncidentDirector() : nullptr;
+	if (Director) { Director->LogSchedule(); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Incident schedule empty: no active incident director")); }
 }

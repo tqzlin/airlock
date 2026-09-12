@@ -18,6 +18,7 @@
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
+#include "Voyage/IncidentDirectorComponent.h"
 
 const FName AAirlockGameMode::HubSectionId(TEXT("StationHub"));
 
@@ -122,6 +123,17 @@ void AAirlockGameMode::BeginPlay()
 		GS->ForceNetUpdate();
 		UE_LOG(LogAirlock, Log, TEXT("Voyage clock started: captain=%s duration=%.0fs endServerTime=%.3f"),
 			*ActiveVoyage.Captain.ToString(), ActiveVoyage.DurationSeconds, GS->VoyageEndServerTime);
+		if (const FShipLayout* Layout = ShipLayouts::Find(GS->CurrentSectionId))
+		{
+			int32 CrewCount = 0;
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (It->IsValid()) { ++CrewCount; }
+			}
+			IncidentDirector = NewObject<UIncidentDirectorComponent>(this, TEXT("IncidentDirector"));
+			IncidentDirector->RegisterComponent();
+			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount));
+		}
 		ScheduleNextVoyageEvent();
 	}
 }
@@ -220,6 +232,8 @@ void AAirlockGameMode::SetVoyageSecondsRemaining(float SecondsRemaining)
 	GS->ForceNetUpdate();
 	UE_LOG(LogAirlock, Log, TEXT("Voyage clock moved: requested=%.3fs remaining=%.3fs endServerTime=%.3f nextAnnouncement=%d"),
 		SecondsRemaining, ClampedSeconds, GS->VoyageEndServerTime, NextCaptainEntry);
+	// Queue incidents first so a jump straight to docking consumes them before the clock ends the voyage.
+	if (IncidentDirector) { IncidentDirector->Reschedule(); }
 	ScheduleNextVoyageEvent();
 }
 
@@ -255,6 +269,9 @@ void AAirlockGameMode::TickVoyageClock()
 	}
 	const double Elapsed = ActiveVoyage.DurationSeconds - (GS->VoyageEndServerTime - GS->GetServerWorldTimeSeconds());
 	const int32 DueEnd = FVoyageSchedule::FindNextUnfiredEntry(CaptainSchedule, NextCaptainEntry, Elapsed);
+	// Timer heap ties are unordered. A direct jump to docking must consume incidents while the voyage
+	// is still active, before the fixed docking caption and return path, whichever timer ran first.
+	if (Elapsed >= ActiveVoyage.DurationSeconds && IncidentDirector) { IncidentDirector->FireDueIncidents(); }
 	while (NextCaptainEntry < DueEnd)
 	{
 		const FText& Line = CaptainSchedule[NextCaptainEntry++].Line;
