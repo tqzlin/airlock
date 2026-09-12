@@ -8,6 +8,7 @@
 
 class UCameraComponent;
 struct FInputActionValue;
+class UHoldProgressWidget;
 
 /**
  * First-person crew member. Capsule + camera only for now (no mesh); walks the station hub and ship sections.
@@ -20,6 +21,15 @@ class AIRLOCK_API AAirlockCharacter : public ACharacter
 
 public:
 	AAirlockCharacter();
+
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	UFUNCTION(Server, Reliable) void ServerBeginHold(AActor* Target);
+	UFUNCTION(Server, Reliable) void ServerEndHold();
+	AActor* GetHoldTarget() const { return HoldTarget; }
+	float GetHoldProgress() const { return HoldProgress; }
+	bool IsInHoldRange(const AActor* Target) const;
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -34,4 +44,13 @@ protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
+	void EndInteract(const FInputActionValue& Value);
+
+private:
+	UPROPERTY(Replicated) TObjectPtr<AActor> HoldTarget;
+	UPROPERTY(Replicated) float HoldProgress = 0.f;
+	float HoldElapsed = 0.f;
+	void ResetHold();
+	UPROPERTY(Transient) TObjectPtr<UHoldProgressWidget> HoldWidget;
+
 };

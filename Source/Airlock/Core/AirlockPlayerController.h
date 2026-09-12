@@ -99,6 +99,19 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerWarp(FVector Location);
 
+	// Dev console RPCs, like the existing warp/clock helpers; gate before M4 multiplayer.
+	UFUNCTION(Exec) void AirlockFault(FName LineId, FString Fault);
+	UFUNCTION(Exec) void AirlockDamage(FName ModuleId, float Amount);
+	UFUNCTION(Exec) void AirlockRepairModule(FName ModuleId, float Amount);
+	UFUNCTION(Exec) void AirlockShipStatus();
+	UFUNCTION(Exec) void AirlockHold(FString TargetLabel);
+	UFUNCTION(Exec) void AirlockRelease();
+	UFUNCTION(Server, Reliable) void ServerShipFault(FName LineId, const FString& Fault);
+	UFUNCTION(Server, Reliable) void ServerAdjustShipModule(FName ModuleId, float Amount, bool bRepair);
+	UFUNCTION(Server, Reliable) void ServerShipStatus();
+	UFUNCTION(Server, Reliable) void ServerHoldByLabel(const FString& TargetLabel);
+	UFUNCTION(Server, Reliable) void ServerReleaseHold();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
