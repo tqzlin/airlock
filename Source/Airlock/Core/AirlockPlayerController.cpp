@@ -232,6 +232,18 @@ void AAirlockPlayerController::AirlockBoard()
 	OpenVoyageBoard();
 }
 
+void AAirlockPlayerController::AirlockWhere()
+{
+	FVector ViewLoc = FVector::ZeroVector;
+	FRotator ViewRot = FRotator::ZeroRotator;
+	GetPlayerViewPoint(ViewLoc, ViewRot);
+	const APawn* P = GetPawn();
+	UE_LOG(LogAirlock, Log, TEXT("Where: map=%s pawn=%s at %s rot %s view %s rot %s"),
+		GetWorld() ? *GetWorld()->GetMapName() : TEXT("?"), P ? *P->GetName() : TEXT("none"),
+		P ? *P->GetActorLocation().ToString() : TEXT("-"), P ? *P->GetActorRotation().ToString() : TEXT("-"),
+		*ViewLoc.ToString(), *ViewRot.ToString());
+}
+
 void AAirlockPlayerController::ServerWarp_Implementation(FVector Location)
 {
 	if (APawn* P = GetPawn())

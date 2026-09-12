@@ -8,7 +8,9 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Core/AirlockGameInstance.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerStart.h"
 #include "Ship/AirlockDoor.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
@@ -29,7 +31,32 @@ AAirlockGameMode::AAirlockGameMode()
 void AAirlockGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
 	Super::InitGame(MapName, Options, ErrorMessage);
-	UE_LOG(LogAirlock, Log, TEXT("AirlockGameMode::InitGame map=%s options=%s"), *MapName, *Options);
+	if (UAirlockGameInstance* GI = Cast<UAirlockGameInstance>(GetGameInstance()))
+	{
+		bArrivedByAirlock = GI->bArrivingByAirlock;
+		GI->bArrivingByAirlock = false;
+	}
+	UE_LOG(LogAirlock, Log, TEXT("AirlockGameMode::InitGame map=%s options=%s arrivedByAirlock=%d"), *MapName, *Options, bArrivedByAirlock ? 1 : 0);
+}
+
+AActor* AAirlockGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	if (bArrivedByAirlock && GetWorld())
+	{
+		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+		{
+			// APlayerStartPIE lives in an editor-only header; match it by class name instead of including it.
+			if (It->GetClass()->GetName() != TEXT("PlayerStartPIE"))
+			{
+				UE_LOG(LogAirlock, Log, TEXT("Arrival spawn for %s: %s at %s"), Player ? *Player->GetName() : TEXT("?"), *It->GetName(), *It->GetActorLocation().ToString());
+				return *It;
+			}
+		}
+	}
+	AActor* Chosen = Super::ChoosePlayerStart_Implementation(Player);
+	UE_LOG(LogAirlock, Log, TEXT("PlayerStart for %s: %s at %s"), Player ? *Player->GetName() : TEXT("?"),
+		Chosen ? *Chosen->GetName() : TEXT("none"), Chosen ? *Chosen->GetActorLocation().ToString() : TEXT("-"));
+	return Chosen;
 }
 
 void AAirlockGameMode::InitGameState()
@@ -108,6 +135,10 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 
 	const FString URL = Door->TargetLevel.GetLongPackageName();
 	bTravelPending = true;
+	if (UAirlockGameInstance* GI = Cast<UAirlockGameInstance>(GetGameInstance()))
+	{
+		GI->bArrivingByAirlock = true;
+	}
 
 	// Card text: where we're going, and who's flying if it's a voyage.
 	FVoyageSpec Spec;

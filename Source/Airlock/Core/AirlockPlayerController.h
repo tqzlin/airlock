@@ -80,6 +80,10 @@ public:
 	UFUNCTION(Exec)
 	void AirlockBoard();
 
+	/** Logs the map, pawn location/rotation and view location (LogAirlock). */
+	UFUNCTION(Exec)
+	void AirlockWhere();
+
 	UFUNCTION(Server, Reliable)
 	void ServerWarp(FVector Location);
 

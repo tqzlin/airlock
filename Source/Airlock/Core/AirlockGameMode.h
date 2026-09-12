@@ -24,6 +24,7 @@ public:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void InitGameState() override;
 	virtual void BeginPlay() override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 
 	/** Section id of the station hub; a door targeting it always travels (and ends the pending voyage). */
 	static const FName HubSectionId;
@@ -39,5 +40,7 @@ protected:
 
 private:
 	bool bTravelPending = false;
+	/** True for a level entered through an airlock: arrivals spawn at the section PlayerStart, never at a PIE start. */
+	bool bArrivedByAirlock = false;
 	FTimerHandle TravelTimer;
 };

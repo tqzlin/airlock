@@ -31,6 +31,13 @@ public:
 
 	virtual void Shutdown() override;
 
+	/**
+	 * Set by the game mode just before an airlock ServerTravel and consumed by the next level's game mode:
+	 * in PIE a "play from here" PlayerStartPIE is carried across seamless travel and would otherwise win the
+	 * spawn, dropping arrivals wherever the editor camera was instead of at the section's PlayerStart.
+	 */
+	bool bArrivingByAirlock = false;
+
 private:
 	TSharedPtr<SAirlockTransition> Overlay;
 	bool bTransitionShown = false;
