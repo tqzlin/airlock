@@ -56,11 +56,15 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() float DockPpm = -1.f;
 	UPROPERTY() int32 Blackouts = 0;
 	UPROPERTY() bool bCleanAir = false;
+	UPROPERTY() bool bLateDock = false;
+	/** Preserves pre-fuel summary strings when Tally is called without fuel data. */
+	UPROPERTY() bool bHasFuelData = false;
 	FString Summary() const;
 };
 
 struct FCargoLayout;
 struct FAtmosphereState;
+struct FFuelState;
 class FShipGraph;
 
 /** Pure manifest and temperature model. World transforms and carrier identity belong to server actors. */
@@ -71,6 +75,8 @@ public:
 	static constexpr int32 PayPerIntactCrate = 100;
 	static constexpr int32 CleanAirBonus = 150;
 	static constexpr int32 BlackoutDock = 50;
+	static constexpr int32 SootFine = 40;
+	static constexpr int32 LateDockFine = 100;
 	static constexpr int32 CleanManifestBonus = 150;
 	static constexpr float HullBonusPerPoint = 2.f;
 	void Build(const FCargoLayout& Layout);
@@ -88,7 +94,7 @@ public:
 	FString Summary() const;
 	static const TCHAR* StateName(ECargoState State);
 	static FVoyageResult Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec,
-		const FAtmosphereState* Air = nullptr, int32 Blackouts = 0);
+		const FAtmosphereState* Air = nullptr, int32 Blackouts = 0, const FFuelState* Fuel = nullptr);
 private:
 	FCargoRates Rates;
 	float RackCoolFactor = 1.f;

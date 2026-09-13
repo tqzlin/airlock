@@ -3,6 +3,7 @@
 #include "Ship/CargoLayouts.h"
 #include "Ship/ShipAtmosphere.h"
 #include "Ship/ShipGraph.h"
+#include "Ship/FuelSystem.h"
 #include "Voyage/IncidentSchedule.h"
 
 bool FCargoCrateState::operator==(const FCargoCrateState& Other) const
@@ -167,7 +168,7 @@ FString FCargoModel::Summary() const
 	return FString::Join(Lines, TEXT("\n"));
 }
 FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec,
-	const FAtmosphereState* Air, int32 Blackouts)
+	const FAtmosphereState* Air, int32 Blackouts, const FFuelState* Fuel)
 {
 	FVoyageResult Result;
 	Result.Type = Spec.Type;
@@ -195,6 +196,13 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 			- static_cast<int64>(BlackoutDock) * Result.Blackouts;
 		Result.Pay = static_cast<int32>(FMath::Max<int64>(0, Pay));
 	}
+	if (Fuel)
+	{
+		Result.bHasFuelData = true; Result.bLateDock = Fuel->bExhausted;
+		const int64 Pay = static_cast<int64>(Result.Pay) - static_cast<int64>(SootFine) * Result.CratesBurned
+			- (Result.bLateDock ? LateDockFine : 0);
+		Result.Pay = static_cast<int32>(FMath::Max<int64>(0, Pay));
+	}
 	return Result;
 }
 FString FVoyageResult::Summary() const
@@ -202,5 +210,6 @@ FString FVoyageResult::Summary() const
 	FString Text = FString::Printf(TEXT("%d/%d crates intact, %d vented, %d loose, hull %.2f%%, pay %d"),
 		CratesIntact, CratesTotal, CratesVented, CratesLoose, ShipCondition, Pay);
 	if (DockPpm >= 0) { Text += FString::Printf(TEXT(", air %d ppm, %d blackouts"), FMath::FloorToInt(DockPpm), Blackouts); }
+	if (bHasFuelData) { Text += FString::Printf(TEXT(", %d burned%s"), CratesBurned, bLateDock ? TEXT(", late") : TEXT("")); }
 	return Text;
 }

@@ -2,6 +2,8 @@
 #include "Misc/AutomationTest.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
+#include "Ship/FuelSystem.h"
+#include "UI/VoyageBoardWidget.h"
 #include "Ship/CargoLayouts.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/ShipLayouts.h"
@@ -246,6 +248,40 @@ bool FCargoAirPayTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("No air summary remains unchanged"), Legacy.Summary(), FString(TEXT("1/4 crates intact, 0 vented, 3 loose, hull 100.00%, pay 300")));
 	TestTrue(TEXT("No air sentinel"), Legacy.DockPpm == -1 && !Legacy.bCleanAir && Legacy.Blackouts == 0);
 	TestEqual(TEXT("Pay cannot be negative"), FCargoModel::Tally(M, Ship, Spec, &Air, 100).Pay, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoFuelPayTest, "Airlock.Fuel.SootLatePayManifestAndResultText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoFuelPayTest::RunTest(const FString& Parameters)
+{
+	FCargoModel M = CargoTestManifest(); FShipGraph Ship; Ship.Build(*ShipLayouts::Find(TEXT("Hauler_Mk1")));
+	for (const auto& Module : Ship.Modules()) { Ship.DamageModule(Module.Id, 10); }
+	M.PickUp(TEXT("C1")); M.Place(TEXT("C1"),TEXT("Clamp_1"));
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"),TEXT("Clamp_2"));
+	M.PickUp(TEXT("C3")); M.Place(TEXT("C3"),TEXT("Clamp_3")); M.PickUp(TEXT("C4")); M.Consume(TEXT("C4"));
+	FFuelState Fuel; FAtmosphereState Air; Air.Ppm = 4; FVoyageSpec Spec;
+	auto Result = FCargoModel::Tally(M, Ship, Spec, &Air, 0, &Fuel);
+	TestEqual(TEXT("Three intact, hull 90, clean, one burn"), Result.Pay, 590);
+	TestEqual(TEXT("Burned count"), Result.CratesBurned, 1); TestEqual(TEXT("Total retains burn"), Result.CratesTotal, 4);
+	TestEqual(TEXT("Not loose"), Result.CratesLoose, 0); TestEqual(TEXT("Not vented"), Result.CratesVented, 0);
+	TestTrue(TEXT("Fuel summary suffix"), Result.Summary().EndsWith(TEXT(", air 4 ppm, 0 blackouts, 1 burned")));
+	const auto NoFuel = FCargoModel::Tally(M, Ship, Spec, &Air);
+	TestEqual(TEXT("Without fuel no fine, manifest still void"), NoFuel.Pay, 630);
+	TestFalse(TEXT("No fuel summary suffix"), NoFuel.Summary().Contains(TEXT("burned")));
+	TestTrue(TEXT("Hub counts burns even without fuel pointer"), UVoyageBoardWidget::DescribeResult(NoFuel).ToString().EndsWith(TEXT(" - air clean - 1 burned")));
+	M.Release(TEXT("Clamp_3")); for (const auto& Module : Ship.Modules()) { Ship.RepairModule(Module.Id, 100); }
+	Fuel.bExhausted = true; Result = FCargoModel::Tally(M, Ship, Spec, &Air, 0, &Fuel);
+	TestEqual(TEXT("Two intact, one loose, burn and late"), Result.Pay, 410); TestTrue(TEXT("Late flag"), Result.bLateDock);
+	TestTrue(TEXT("Late summary"), Result.Summary().EndsWith(TEXT(", 1 burned, late")));
+	TestTrue(TEXT("Late hub"), UVoyageBoardWidget::DescribeResult(Result).ToString().EndsWith(TEXT(" - air clean - 1 burned - late")));
+	TestEqual(TEXT("Pay never negative"), FCargoModel::Tally(M, Ship, Spec, &Air, 100, &Fuel).Pay, 0);
+	M = CargoTestManifest(); M.PickUp(TEXT("C1")); M.Consume(TEXT("C1")); M.PickUp(TEXT("C3")); M.Consume(TEXT("C3")); Fuel.bExhausted = false;
+	Result = FCargoModel::Tally(M, Ship, Spec, &Air, 0, &Fuel);
+	TestEqual(TEXT("PIE example hub text"), UVoyageBoardWidget::DescribeResult(Result).ToString(), FString(TEXT("Last run: 0/4 crates intact - hull 100% - pay 270 cr - air clean - 2 burned")));
+	Result = FCargoModel::Tally(CargoTestManifest(), Ship, Spec);
+	TestFalse(TEXT("No fuel or air retains old summary"), Result.Summary().Contains(TEXT("burned")) || Result.Summary().Contains(TEXT("air")));
+	TestEqual(TEXT("Old hub unchanged"), UVoyageBoardWidget::DescribeResult(Result).ToString(), FString(TEXT("Last run: 0/4 crates intact - hull 100% - pay 200 cr")));
 	return true;
 }
 #endif

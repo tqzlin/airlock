@@ -568,7 +568,7 @@ FName AAirlockGameMode::CargoFirstFilledClamp() const
 }
 FVoyageResult AAirlockGameMode::CargoTally() const
 {
-	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount);
+	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount, FuelHasSystem() ? &FuelModel.State() : nullptr);
 }
 FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
 
