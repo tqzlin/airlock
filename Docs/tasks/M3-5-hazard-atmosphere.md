@@ -307,3 +307,15 @@ always docks, as the design decided.
 `Scripts\build-editor.bat` clean; `Scripts\run-tests.bat Airlock` all green (56 existing + the new ones); all six
 existing proofs and `verify-atmosphere.ps1` exit 0; captures show the puff, the `Hold air` row in the `scrub` and
 `scrubbing` wordings, the blackout vignette with its countdown, and the hub board's `air clean` text.
+
+## Decisions recorded at review (Claude, 2026-09-12)
+- Implemented as specified after the red-team; nothing touched outside the brief; `main` had only documentation
+  commits since the branch base, so the merge had no conflicts.
+- `FShipAtmosphere::AddPpm` accepts negative deltas too (clamped, reported as a change); M3-6 only ever adds soot.
+  `AirSetPpm` with the current value reports `accepted=0 (unchanged ...)`, which no proof depends on.
+- The rack cooling factor is written from `UpdateAtmosphereFlags` before every cargo tick and also whenever the
+  ship graph publishes, so a repair changes the rack's rate on the same tick.
+- The design note's "750 for a clean solo run" is 900 under these rules (M3-4's manifest bonus plus clean air);
+  section 9 of the note records it and M3-6's examples are based on 900.
+- Astra's run: 38 min, no GUI tool, one build error fixed on the next build twice (never the same error twice),
+  two transient-world tests moved to latent steps; the reviewer reproduced 72/72 and all seven proofs.

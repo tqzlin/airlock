@@ -213,3 +213,41 @@ PIE session. If the editor is minimized, use `Scripts\restore-editor-window.ps1`
 - No unresolved gameplay or acceptance failure. Visual follow-up for the existing legibility milestone: the
   inherited steam is faint beside the red heat light, and engineering's existing module labels/lights crowd
   the close panel view. No pack, map or unrelated visual changes were made to address those pre-existing issues.
+
+## Reviewer verification (Claude, 2026-09-12)
+
+Reviewed from Claude Code on the same checkout after Astra's process had exited; the editor on port 8000 was the
+one Astra left (StationHub, no PIE, both maps clean) running the branch binary built at 19:23, which postdates the
+last source commit (19:20).
+
+- **Diff read** against the brief: the atmosphere model integrates the puff on-phase exactly across ticks and
+  remembers finished bursts; flags and the rack factor are derived before the cargo tick and the air ticks after it
+  from the live crates; publication assigns only what differs and the captain lines have per-line cooldowns with
+  the highest threshold winning on a jump; the character has one walk-speed function and one movement predicate;
+  every acting RPC is refused while blacked out; the tally and the hub board are guarded by the `DockPpm < 0`
+  sentinel so the M3-4 strings survive. Nothing on the do-not-touch list changed; the four protected travel
+  functions are untouched; no existing assertion was rewritten.
+- **Tests**: `Scripts\run-tests.bat Airlock` headless, **72 / 72** in 19 s.
+- **Proofs** on the branch binary, one at a time, unedited:
+
+| Proof | Result | Time |
+|---|---|---|
+| `verify-loop.ps1` | `LOOP OK` | 53 s |
+| `verify-ship-graph.ps1` | `GRAPH OK` | 71 s |
+| `verify-incidents.ps1` | `INCIDENTS OK` | 58 s |
+| `verify-voyage-clock.ps1` | `CLOCK OK` | 106 s |
+| `verify-level-pass.ps1` | `LEVEL OK` | 150 s |
+| `verify-cargo.ps1` | `CARGO OK` | 89 s |
+| `verify-atmosphere.ps1` | `ATMOSPHERE OK` | 125 s |
+
+- **Captures reviewed** (`Saved\AgentCaptures\M3-5\`, copies in `agent\results\images\astra-m3-5\`): `first-puff`
+  (board `Hold air 22 ppm - scrub` above `Cool crate C2 - 45C`, the captain's nitrile line, `C2  Loose  45C` under
+  the red heat light; the steam is faint), `scrubbing` (`Hold air 61 ppm - scrubbing` in red, `EXPOSURE 39%`; the
+  frame is flooded by the engineering module's green status light and the Engines label - a legibility note for
+  M3-8, not a defect), `blackout` (the red tint over the whole view, `BLACKED OUT - 29 s`, the captain's med-bot
+  line, the board dimmed behind the tint), `hub-last-run-air` (`Last run: 1/4 crates intact - hull 100% - pay 400 cr
+  - air clean` under DEPARTURES).
+- **Merge**: `main` had only documentation commits since the branch base; `--no-ff` merge with no conflicts, no
+  rebuild needed (the binary on port 8000 already matches `main`'s source).
+- Astra's run: 38 min, nine commits, no GUI tool, the editor left clean. The two transient-world tests it moved to
+  latent steps are the right fix (several timer steps in one engine frame is what the M3-4 harness avoided too).
