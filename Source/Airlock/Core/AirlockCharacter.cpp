@@ -18,6 +18,8 @@
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "Ship/ShipModule.h"
+#include "EngineUtils.h"
 
 AAirlockCharacter::AAirlockCharacter()
 {
@@ -206,6 +208,7 @@ void AAirlockCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, HoldProgress, COND_OwnerOnly);
 	DOREPLIFETIME(AAirlockCharacter, CarriedCrate);
 	DOREPLIFETIME(AAirlockCharacter, SeatedStation);
+	DOREPLIFETIME(AAirlockCharacter, bBlackedOut);
 }
 void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -399,4 +402,27 @@ void AAirlockCharacter::OnRep_SeatedStation()
 {
 	// Owning client mirrors the server's movement mode so prediction does not fight the seat.
 	if (!HasAuthority()) { ApplySeatedMovement(SeatedStation != nullptr); }
+}
+
+void AAirlockCharacter::ServerSetScrubMode_Implementation(EScrubMode Mode) { SetScrubModeServer(Mode, true); }
+bool AAirlockCharacter::SetScrubModeServer(EScrubMode Mode, bool bRequireReach)
+{
+	if (!HasAuthority()) { return false; }
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: blacked out")); return false; }
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	if (!GM || !GM->AirHasAtmosphere()) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: No atmosphere on this section")); return false; }
+	if (GS && GS->Atmosphere.bScrubDisabled) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: life support failed")); return false; }
+	if (bRequireReach)
+	{
+		bool bInReach = false;
+		for (TActorIterator<AShipModule> It(GetWorld()); It; ++It)
+		{
+			if (It->GetModuleType() == EShipModuleType::LifeSupport && IsInHoldRange(*It)) { bInReach = true; break; }
+		}
+		if (!bInReach) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: out of range")); return false; }
+	}
+	if (!GM->AirSetScrubMode(Mode)) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: invalid mode")); return false; }
+	UE_LOG(LogAirlock, Log, TEXT("Scrub %s by %s"), FShipAtmosphere::ModeName(Mode), *GetName());
+	return true;
 }

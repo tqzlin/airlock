@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Ship/ShipAtmosphere.h"
 #include "AirlockCharacter.generated.h"
 
 class UCameraComponent;
@@ -35,6 +36,9 @@ public:
 	AActor* GetHoldTarget() const { return HoldTarget; }
 	float GetHoldProgress() const { return HoldProgress; }
 	bool IsInHoldRange(const AActor* Target) const;
+	UFUNCTION(Server, Reliable) void ServerSetScrubMode(EScrubMode Mode);
+	bool SetScrubModeServer(EScrubMode Mode, bool bRequireReach);
+	UPROPERTY(Replicated) bool bBlackedOut = false;
 	UFUNCTION(Server, Reliable) void ServerPickUp(ACargoCrate* Crate);
 	UFUNCTION(Server, Reliable) void ServerPutDown();
 	UFUNCTION(Server, Reliable) void ServerPlace(ACargoSlot* CargoSlot);

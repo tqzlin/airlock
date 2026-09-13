@@ -79,6 +79,8 @@ private:
 	FShipAtmosphere AtmosphereModel;
 	bool UpdateAtmosphereFlags();
 	void PublishAtmosphere();
+	TMap<FName, double> AirCaptainLastSpoken;
+	void SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* Pawn = nullptr);
 	void BuildCargo();
 	void PublishCargo();
 	FTimerHandle ShipGraphTimer;

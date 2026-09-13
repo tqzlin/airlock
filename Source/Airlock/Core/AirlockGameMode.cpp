@@ -129,6 +129,7 @@ void AAirlockGameMode::BeginPlay()
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
+		AirCaptainLastSpoken.Reset();
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -601,6 +602,19 @@ void AAirlockGameMode::PublishAtmosphere()
 		bLog |= (Old.Ppm >= Threshold) != (Mirror.Ppm >= Threshold);
 	}
 	GS->PublishAtmosphere(Mirror, AtmosphereModel.PuffingCrates());
+	// A single upward jump speaks only its highest crossed threshold.
+	if (Old.Ppm < R.DangerPpm && Mirror.Ppm >= R.DangerPpm)
+	{
+		SpeakAirCaptain(TEXT("Danger"), NSLOCTEXT("Airlock", "AirDanger", "Captain {0} here. Air's bad. Get those scrubbers up and keep moving."));
+	}
+	else if (Old.Ppm < R.WarnPpm && Mirror.Ppm >= R.WarnPpm)
+	{
+		SpeakAirCaptain(TEXT("Warn"), NSLOCTEXT("Airlock", "AirWarn", "Captain {0} here. Nitriles in the hold air. Scrubbers to hazard mode - the life-support panel."));
+	}
+	else if (Old.Ppm >= R.WarnPpm && Mirror.Ppm < R.WarnPpm)
+	{
+		SpeakAirCaptain(TEXT("Clear"), NSLOCTEXT("Airlock", "AirClear", "Captain {0} here. Air's clearing. Good work."));
+	}
 	if (bLog)
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Air %d ppm scrub=%s%s%s"), FMath::FloorToInt(Mirror.Ppm), FShipAtmosphere::ModeName(Mirror.ScrubMode),
@@ -621,3 +635,18 @@ bool AAirlockGameMode::AirSetPpm(float Ppm)
 }
 EScrubMode AAirlockGameMode::AirGetScrubMode() const { return AtmosphereModel.State().ScrubMode; }
 FString AAirlockGameMode::AirSummary() const { return AirHasAtmosphere() ? AtmosphereModel.Summary() : TEXT("No atmosphere on this section"); }
+
+void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* Pawn)
+{
+	if (!HasAuthority() || !GetWorld()) { return; }
+	const double Now = GetWorld()->GetTimeSeconds();
+	const double* Last = AirCaptainLastSpoken.Find(Cue);
+	if (Last && Now - *Last < 20.0) { return; }
+	AirCaptainLastSpoken.Add(Cue, Now);
+	const FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); }
+	}
+}
