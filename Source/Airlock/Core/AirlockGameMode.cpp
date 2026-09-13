@@ -130,6 +130,7 @@ void AAirlockGameMode::BeginPlay()
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
 		AirCaptainLastSpoken.Reset();
+		BlackoutCount = 0; CountedBlackouts.Reset();
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -649,4 +650,17 @@ void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* P
 	{
 		if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); }
 	}
+}
+
+void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
+{
+	const auto* Crew = Cast<AAirlockCharacter>(Pawn);
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !IsValid(Crew) || Crew->GetWorld() != GetWorld() || !Crew->bBlackedOut
+		|| !AirHasAtmosphere() || !GS || !GS->bVoyageActive) { return; }
+	const double* Counted = CountedBlackouts.Find(Pawn);
+	if (Counted && *Counted == Crew->BlackoutEndServerTime) { return; }
+	CountedBlackouts.Add(Pawn, Crew->BlackoutEndServerTime);
+	++BlackoutCount;
+	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down - med-bot's on it."), Pawn);
 }

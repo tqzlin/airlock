@@ -56,6 +56,8 @@ public:
 	bool AirSetPpm(float Ppm);
 	EScrubMode AirGetScrubMode() const;
 	FString AirSummary() const;
+	void NotifyBlackout(APawn* Pawn);
+	int32 GetBlackoutCount() const { return BlackoutCount; }
 	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
 protected:
@@ -80,6 +82,8 @@ private:
 	bool UpdateAtmosphereFlags();
 	void PublishAtmosphere();
 	TMap<FName, double> AirCaptainLastSpoken;
+	int32 BlackoutCount = 0;
+	TMap<TWeakObjectPtr<APawn>, double> CountedBlackouts;
 	void SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* Pawn = nullptr);
 	void BuildCargo();
 	void PublishCargo();
