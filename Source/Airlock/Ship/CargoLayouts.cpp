@@ -20,6 +20,11 @@ namespace
 	const TCHAR* CaseMesh = TEXT("/Game/ModSci_EngiProps/Meshes/SM_Case_A.SM_Case_A"); // measured 120.49 x 67.55 x 51.00 cm
 }
 
+float CargoLayouts::LabelYawFor(double Y)
+{
+	return Y > 1560.0 ? -90.f : 90.f;
+}
+
 FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 VolatileCount)
 {
 	FCargoLayout Layout;
@@ -34,6 +39,7 @@ FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 Volatil
 		Slot.Transform = FTransform(FVector(ClampSpots[I].X, ClampSpots[I].Y, -65));
 		Slot.Mesh = FSoftObjectPath(PalletMesh);
 		Slot.MeshScale = PalletScale;
+		Slot.LabelYaw = LabelYawFor(ClampSpots[I].Y);
 		Layout.Slots.Add(Slot);
 	}
 	FCargoSlotSpec Rack;
@@ -42,6 +48,7 @@ FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 Volatil
 	// Shelf pivot is at a corner: yaw 90 extends +182 along Y. Keep its far edge south of the walkway.
 	Rack.Transform = FTransform(FRotator(0, 90, 0), FVector(-5000, 1300, -65));
 	Rack.Mesh = FSoftObjectPath(ShelfMesh);
+	Rack.LabelYaw = LabelYawFor(Rack.Transform.GetLocation().Y);
 	Layout.Slots.Add(Rack);
 	int32 Volatile = 0;
 	for (int32 I = 0; I < Casks; ++I)
@@ -53,6 +60,7 @@ FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 Volatil
 		Volatile += Crate.bVolatile;
 		Crate.Transform = FTransform(FVector(CrateSpots[I].X, CrateSpots[I].Y, -65));
 		Crate.Mesh = FSoftObjectPath(CaseMesh);
+		Crate.LabelYaw = LabelYawFor(CrateSpots[I].Y);
 		Layout.Crates.Add(Crate);
 	}
 	return Layout;

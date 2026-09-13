@@ -25,7 +25,9 @@ class AIRLOCK_API UTaskBoardWidget : public UUserWidget
 public:
 	static constexpr int32 MaxTaskRows = 8;
 	static TArray<FTaskBoardRow> BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-		const TArray<FCargoCrateState>& Cargo = {}, const FAtmosphereState* Air = nullptr, const FFuelState* Fuel = nullptr);
+		const TArray<FCargoCrateState>& Cargo = {}, const FAtmosphereState* Air = nullptr, const FFuelState* Fuel = nullptr,
+		bool bSummaries = false);
+	static FText BuildReadout(const FAtmosphereState* Air, const FFuelState* Fuel, int32 SecondsToDock);
 	/** Called by the local controller, including while collapsed; handles late replication and seamless travel. */
 	void UpdateState(AAirlockGameState* State);
 
@@ -33,7 +35,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") FLinearColor TextColour = FLinearColor(.9f, .95f, 1.f);
 	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") FLinearColor FailedColour = FLinearColor(1.f, .22f, .18f);
 	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") int32 FontSize = 16;
-	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") float PanelWidth = 290.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") float PanelWidth = 400.f;
 	UPROPERTY(EditDefaultsOnly, Category = "Airlock|TaskBoard") FVector2D PanelOffset = FVector2D(24.f, 120.f);
 
 protected:
@@ -41,11 +43,12 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
-	UPROPERTY(Transient) TObjectPtr<UTextBlock> ClockText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> ReadoutText;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> TaskRows;
 	TWeakObjectPtr<AAirlockGameState> ObservedState;
 	FDelegateHandle GraphChangedHandle;
 	int32 LastSeconds = INDEX_NONE;
 	void RefreshRows();
+	void RefreshReadout();
 	void UnbindState();
 };

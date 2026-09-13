@@ -24,7 +24,7 @@ public:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> ShipRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UTextRenderComponent> Label;
-	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelSize = 30.f;
+	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelSize = 22.f;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelHeight = 210.f;
 
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FColor LabelColour = FColor::White;

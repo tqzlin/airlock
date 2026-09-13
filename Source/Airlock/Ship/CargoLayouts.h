@@ -13,6 +13,7 @@ struct AIRLOCK_API FCargoSlotSpec
 	UPROPERTY() FSoftObjectPath Mesh;
 	/** Applied to the pad mesh only (the actor stays at scale 1, so a placed crate keeps its size). */
 	UPROPERTY() FVector MeshScale = FVector(1.f);
+	UPROPERTY() float LabelYaw = 180.f;
 };
 
 USTRUCT()
@@ -23,6 +24,7 @@ struct AIRLOCK_API FCargoCrateSpec
 	UPROPERTY() bool bVolatile = false;
 	UPROPERTY() FTransform Transform;
 	UPROPERTY() FSoftObjectPath Mesh;
+	UPROPERTY() float LabelYaw = 180.f;
 };
 
 USTRUCT()
@@ -36,6 +38,8 @@ struct AIRLOCK_API FCargoLayout
 
 namespace CargoLayouts
 {
+	/** Face the reader on the Y 1560 walkway, including spots on its centre line. */
+	AIRLOCK_API float LabelYawFor(double Y);
 	/** Today's four-cask, three-clamp manifest (what every proof books), or null for a section without a hold. */
 	AIRLOCK_API const FCargoLayout* Find(FName SectionId);
 	/** The manifest of a contract tier (M3-7): CaskCount casks (up to 12), every second one volatile up to VolatileCount, CaskCount * 3 / 4 clamps, one rack. */

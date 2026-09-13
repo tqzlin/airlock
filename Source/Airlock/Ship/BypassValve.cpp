@@ -21,7 +21,6 @@ ABypassValve::ABypassValve()
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Body->SetCollisionResponseToAllChannels(ECR_Ignore); Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label")); Label->SetupAttachment(FuelRoot);
-	Label->SetHorizontalAlignment(EHTA_Center); Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BypassLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("BypassLight"));
 	BypassLight->SetupAttachment(FuelRoot);
 	BypassLight->SetIntensityUnits(ELightUnits::Candelas);
@@ -40,8 +39,8 @@ void ABypassValve::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(16); Label->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-35,0,155)));
-		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, 14.f, Spec.LabelYaw, FLinearColor::White,
+			Spec.Transform.InverseTransformVectorNoScale(FVector(-35,0,155)));
 		BypassLight->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-25,0,110)));
 		BypassLight->SetAttenuationRadius(140); BypassLight->SetIntensity(80);
 		BypassLight->SetLightColor(FLinearColor(1.f,.45f,.02f));
@@ -75,7 +74,7 @@ const FFuelState* ABypassValve::GetFuelState() const
 void ABypassValve::Refresh()
 {
 	const auto* S = GetFuelState(); if (!bVisualsReady || !S) { return; }
-	Label->SetText(FText::FromString(FString::Printf(TEXT("BYPASS  %s"), S->bBypassOpen ? TEXT("OPEN") : TEXT("closed"))));
+	Label->SetText(FText::FromString(FString::Printf(TEXT("BYPASS\n%s"), S->bBypassOpen ? TEXT("OPEN") : TEXT("closed"))));
 	BypassLight->SetVisibility(S->bBypassOpen);
 }
 FText ABypassValve::GetInteractPrompt_Implementation() const

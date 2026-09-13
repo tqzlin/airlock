@@ -21,7 +21,6 @@ AFuelValve::AFuelValve()
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Body->SetCollisionResponseToAllChannels(ECR_Ignore); Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label")); Label->SetupAttachment(FuelRoot);
-	Label->SetHorizontalAlignment(EHTA_Center); Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	LeakLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("LeakLight"));
 	LeakLight->SetupAttachment(FuelRoot);
 	LeakLight->SetIntensityUnits(ELightUnits::Candelas);
@@ -43,12 +42,13 @@ void AFuelValve::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(12); Label->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-100,0,155)));
-		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, 14.f, Spec.LabelYaw, FLinearColor::White,
+			Spec.Transform.InverseTransformVectorNoScale(FVector(-100,0,155)));
 		LeakLight->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-25,0,110)));
 		LeakLight->SetAttenuationRadius(140); LeakLight->SetIntensity(80);
 		LeakLight->SetLightColor(FLinearColor::Red);
-		LeakFX->SetRelativeLocation(FVector(0,0,100));
+		LeakFX->SetRelativeLocation(FVector(0,0,130));
+		LeakFX->SetRelativeScale3D(FVector(2.5));
 		if (auto* Steam = LoadObject<UParticleSystem>(nullptr, TEXT("/Game/ModSciInteriors/Particles/PS_SteamDoor.PS_SteamDoor"))) { LeakFX->SetTemplate(Steam); }
 		bVisualsReady = true;
 	}
@@ -80,7 +80,7 @@ const FFuelState* AFuelValve::GetFuelState() const
 void AFuelValve::Refresh()
 {
 	const auto* S = GetFuelState(); if (!bVisualsReady || !S) { return; }
-	Label->SetText(FText::FromString(FString::Printf(TEXT("FEED VALVE  %s"), S->bFeedLeak ? TEXT("leak") : TEXT("shut"))));
+	Label->SetText(FText::FromString(FString::Printf(TEXT("FEED VALVE\n%s"), S->bFeedLeak ? TEXT("leak") : TEXT("shut"))));
 	LeakLight->SetVisibility(S->bFeedLeak);
 	if (bLeaking != S->bFeedLeak)
 	{
