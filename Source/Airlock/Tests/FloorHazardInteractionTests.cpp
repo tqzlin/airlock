@@ -118,7 +118,7 @@ bool FHazardEventBodyTest::RunTest(const FString& Parameters)
 	// The actor must follow a mirror change independently of the game mode's precise model.
 	FFloorHazardState Changed = S.State->FloorHazards; Changed.Spills[0].Litres = 42; Changed.Spills[0].RadiusCm = 81;
 	S.State->PublishFloorHazards(Changed);
-	TestEqual(TEXT("Mirror label"), Spill->Label->Text.ToString(), FString(TEXT("SPILL\n42 L - squeegee (hold E)")));
+	TestEqual(TEXT("Mirror label"), Spill->Label->Text.ToString(), FString(TEXT("SPILL\n42 L")));
 	TestEqual(TEXT("Mirror marker"), Spill->Marker->GetUnscaledBoxExtent().X, 81.0);
 	TestEqual(TEXT("Mirror disc"), Spill->Body->GetRelativeScale3D().X, 81.0 / 50.0, .0001);
 	FFloorFixtureSpec Rotated = RefineryLayouts::Find(RefineryLayouts::FloorSectionId())->Fixtures[1];

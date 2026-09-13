@@ -85,7 +85,8 @@ void ASpill::Refresh()
 		SetActorLocation(S->Location);
 		Body->SetRelativeScale3D(FVector(S->RadiusCm / 50.f, S->RadiusCm / 50.f, .02f));
 		Marker->SetBoxExtent(FVector(S->RadiusCm, S->RadiusCm, 30));
-		Label->SetText(FText::FromString(FString::Printf(TEXT("SPILL\n%d L - squeegee (hold E)"), FMath::FloorToInt(S->Litres))));
+		// The crosshair prompt says what E does (M5-5); the label keeps to what the puddle is.
+		Label->SetText(FText::FromString(FString::Printf(TEXT("SPILL\n%d L"), FMath::FloorToInt(S->Litres))));
 	}
 	if (bPuddlePresent != (S != nullptr))
 	{

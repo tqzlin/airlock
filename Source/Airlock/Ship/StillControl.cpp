@@ -51,9 +51,7 @@ void AStillControl::OnRep_Spec()
 		Marker->SetBoxExtent(bHopper ? FVector(32,32,12) : FVector(20,20,45));
 		Marker->SetRelativeLocation(FVector(0,0,bHopper ? 18 : 60) / Spec.Scale);
 		const float Height = bHopper ? 65.f : IsRepeatingHold_Implementation() ? 98.f : 28.f;
-		ShipVisuals::ConfigureLabel(Label, bHopper ? 12.f : 8.f, Spec.LabelYaw, FLinearColor::White,
-			FVector(0,-12,Height) / Spec.Scale);
-		Label->SetRelativeScale3D(FVector::OneVector / Spec.Scale);
+		ShipVisuals::ConfigureLabelUnscaled(Label, bHopper ? 12.f : 8.f, Spec.LabelYaw, FLinearColor::White, FVector(0,-12,Height));
 		bVisualsReady = true;
 	}
 	Refresh();
@@ -110,11 +108,37 @@ int32 AStillControl::KnobValue(const FStillState& State) const
 void AStillControl::Refresh()
 {
 	const auto* S = GetStillState(); if (!bVisualsReady || !S) { return; }
-	FString Second;
+	FString Second; FLinearColor Colour = FLinearColor::White;
 	if (Spec.Kind == EStillControl::Hopper) { Second = FString::Printf(TEXT("%d queued"), S->Hopper.Num()); }
 	else if (IsRepeatingHold_Implementation()) { Second = FString::Printf(TEXT("%d%%"), KnobValue(*S) * 5); }
-	else { Second = Spec.Kind == EStillControl::Calibrate ? TEXT("CALIBRATE") : RefineryLayouts::StatusName(S->Status); }
+	else { Second = LeverLine(*S, Colour); }
+	Label->SetTextRenderColor(Colour.ToFColor(true));
 	Label->SetText(FText::FromString(Spec.Label + TEXT("\n") + Second));
+}
+FString AStillControl::LeverLine(const FStillState& S, FLinearColor& OutColour) const
+{
+	// A lever's second line is its own reading, not the still's status (M5-5): amber means "pull me now".
+	static const FLinearColor Amber(1.f, .65f, .1f);
+	const FRefineryRates Rates;
+	switch (Spec.Kind)
+	{
+	case EStillControl::Reset:
+		if (S.Status == EStillStatus::Popped) { OutColour = Amber; return TEXT("hold E"); }
+		return TEXT("no pop");
+	case EStillControl::Purge:
+		if (S.Status == EStillStatus::Flash) { OutColour = Amber; return TEXT("hold E"); }
+		return TEXT("no flash");
+	case EStillControl::Scrape:
+		if (S.bFouled) { OutColour = Amber; }
+		return FString::Printf(TEXT("coke %d%%"), FMath::FloorToInt(S.Coke));
+	case EStillControl::Repair:
+		if (S.Status == EStillStatus::Failed) { OutColour = Amber; return TEXT("hold E"); }
+		return FString::Printf(TEXT("cond %d%%"), FMath::FloorToInt(S.Condition));
+	case EStillControl::Calibrate:
+		if (S.Calibration < Rates.CalWarn) { OutColour = Amber; }
+		return FString::Printf(TEXT("cal %d%%"), FMath::FloorToInt(S.Calibration * 100.f));
+	default: return FString();
+	}
 }
 bool AStillControl::IsRepeatingHold_Implementation() const { ERefineryKnob Knob; int32 Step; return KnobAction(Knob, Step); }
 float AStillControl::GetInteractHoldSeconds_Implementation() const

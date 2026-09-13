@@ -70,7 +70,8 @@ void AFloorFixture::OnRep_Spec()
 	if (!bVisualsReady)
 	{
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FallbackScale);
-		ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, Spec.LabelHeight));
+		// World centimetres (M5-5): the spec's height and the 22 cm text mean what they say on a scaled fixture too.
+		ShipVisuals::ConfigureLabelUnscaled(Label, LabelSize, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, Spec.LabelHeight));
 		bVisualsReady = true;
 	}
 	Refresh();

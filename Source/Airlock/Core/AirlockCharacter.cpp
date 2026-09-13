@@ -386,7 +386,9 @@ void AAirlockCharacter::ServerPutDown_Implementation()
 	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
 	if (!bVented && (!GM || !GM->CargoPutDown(Id))) { UE_LOG(LogAirlock, Log, TEXT("PutDown rejected: model refused")); return; }
 	DetachCarriedCrateAt(Drop);
-	UE_LOG(LogAirlock, Log, TEXT("PutDown %s by %s%s"), *Id.ToString(), *GetName(), bVented ? TEXT(" (vented)") : TEXT(""));
+	// The landing point is logged (M5-5) so a proof can check the cask rests on the deck, not on a marker.
+	UE_LOG(LogAirlock, Log, TEXT("PutDown %s by %s%s at %s"), *Id.ToString(), *GetName(), bVented ? TEXT(" (vented)") : TEXT(""),
+		*Drop.GetLocation().ToString());
 }
 void AAirlockCharacter::ServerPlace_Implementation(ACargoSlot* CargoSlot)
 {

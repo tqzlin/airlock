@@ -917,7 +917,14 @@ void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* P
 	const double* Last = AirCaptainLastSpoken.Find(Cue);
 	if (Last && Now - *Last < 20.0) { return; }
 	AirCaptainLastSpoken.Add(Cue, Now);
-	const FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	if (IsFloorSection())
+	{
+		// Okafor speaks on the floor (M5-5): the ship captain's opener comes off the shared air and fuel patterns.
+		FString Text = Line.ToString();
+		Text.RemoveFromStart(FString::Printf(TEXT("Captain %s here. "), *ActiveVoyage.Captain.ToString()));
+		Line = FText::FromString(Text);
+	}
 	UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *SpeakerName(), *Line.ToString());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{

@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Ship/CargoCrate.h"
 #include "Ship/ShipVisuals.h"
+#include "Ship/CargoLayouts.h"
 #include "Components/SceneComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/PointLightComponent.h"
@@ -108,8 +109,11 @@ void ACargoCrate::RefreshLabel()
 	const FLinearColor Colour = State->State == ECargoState::Vented || State->Temperature >= 80.f
 		? FLinearColor(1.f, .15f, .1f) : State->Temperature >= FCargoRates().WarnTemperature
 		? FLinearColor(1.f, .6f, .1f) : FLinearColor::White;
-	ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, LabelHeight));
-	ShipVisuals::ConfigureLabel(StateLabel, LabelSize, Spec.LabelYaw, Colour, FVector(0, 0, LabelHeight - LabelSize));
+	// The label faces the walkway from wherever the cask stands now (M5-5): a cask dropped north of it, or racked south
+	// of it, read mirrored when the facing was fixed at the spawn spot's (`Spec.LabelYaw`, the same rule at that Y).
+	const float FacingYaw = CargoLayouts::LabelYawFor(GetActorLocation().Y);
+	ShipVisuals::ConfigureLabel(Label, LabelSize, FacingYaw, FLinearColor::White, FVector(0, 0, LabelHeight));
+	ShipVisuals::ConfigureLabel(StateLabel, LabelSize, FacingYaw, Colour, FVector(0, 0, LabelHeight - LabelSize));
 	const bool bShowLabel = State->State != ECargoState::Carried && !FCargoModel::IsConsumed(State->State);
 	Label->SetVisibility(bShowLabel);
 	StateLabel->SetVisibility(bShowLabel);

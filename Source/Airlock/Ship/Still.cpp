@@ -8,6 +8,10 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "TimerManager.h"
 
+// The tank (SM_WVC_Tank_A at 0.8) is 115 cm in radius and 170 cm tall: the lines hang 10 cm off its face, the top
+// one just over the rim and two on the dark body, 23 cm apart; the name sits above the stack.
+const FVector AStill::GaugeWorldOffsets[3] = { FVector(0, -125, 185), FVector(0, -125, 162), FVector(0, -125, 139) };
+
 AStill::AStill()
 {
 	BathGauge = CreateDefaultSubobject<UTextRenderComponent>(TEXT("BathGauge")); BathGauge->SetupAttachment(FixtureRoot);
@@ -24,8 +28,12 @@ AStill::AStill()
 void AStill::Refresh()
 {
 	Super::Refresh();
+	if (!bVisualsReady) { return; }
+	// The name alone on the base label; the state is the gauges' job (M5-5).
+	ShipVisuals::ConfigureLabelUnscaled(Label, LabelSize, GetSpec().LabelYaw, FLinearColor::White, FVector(0, -125, NameWorldHeight));
+	Label->SetText(FText::FromString(GetSpec().Line1));
 	const auto* GS = FloorState.Get();
-	if (!bVisualsReady || !GS || !GS->RefineryHasFloor()) { return; }
+	if (!GS || !GS->RefineryHasFloor()) { return; }
 	const FStillState* S = GS->Refinery.Stills.FindByPredicate([this](const FStillState& St) { return St.Id == GetFixtureId(); });
 	if (!S) { return; }
 	if (!bPopVisualsReady)
@@ -41,11 +49,11 @@ void AStill::Refresh()
 	}
 	LastStatus = S->Status; bHasLastStatus = true;
 	const FRefineryRates Rates;
-	ShipVisuals::ConfigureLabel(BathGauge, 18.f, GetSpec().LabelYaw,
-		S->PressureBar >= Rates.WarnBar ? FLinearColor::Red : FLinearColor::White, FVector(0, -125, 215));
-	ShipVisuals::ConfigureLabel(KnobGauge, 18.f, GetSpec().LabelYaw, FLinearColor::White, FVector(0, -125, 195));
-	ShipVisuals::ConfigureLabel(BatchGauge, 18.f, GetSpec().LabelYaw,
-		S->Calibration < Rates.CalWarn ? FLinearColor(1.f, .65f, .1f) : FLinearColor::White, FVector(0, -125, 175));
+	ShipVisuals::ConfigureLabelUnscaled(BathGauge, GaugeWorldSize, GetSpec().LabelYaw,
+		S->PressureBar >= Rates.WarnBar ? FLinearColor::Red : FLinearColor::White, GaugeWorldOffsets[0]);
+	ShipVisuals::ConfigureLabelUnscaled(KnobGauge, GaugeWorldSize, GetSpec().LabelYaw, FLinearColor::White, GaugeWorldOffsets[1]);
+	ShipVisuals::ConfigureLabelUnscaled(BatchGauge, GaugeWorldSize, GetSpec().LabelYaw,
+		S->Calibration < Rates.CalWarn ? FLinearColor(1.f, .65f, .1f) : FLinearColor::White, GaugeWorldOffsets[2]);
 	BathGauge->SetText(FText::FromString(FString::Printf(TEXT("T %d K   P %.2f bar"), FMath::FloorToInt(S->TempK), S->PressureBar)));
 	KnobGauge->SetText(FText::FromString(FString::Printf(TEXT("heat %d%%  feed %d%%  vent %d%%"), S->HeatSteps * 5, S->FeedSteps * 5, S->VentSteps * 5)));
 	FString Batch;
@@ -55,6 +63,7 @@ void AStill::Refresh()
 		Batch = FString::Printf(TEXT("%s %d%%"), *S->CurrentCask.ToString(), FMath::FloorToInt(Progress * 100.f));
 	}
 	else { Batch = S->Status == EStillStatus::Idle ? TEXT("idle") : FString(RefineryLayouts::StatusName(S->Status)).ToUpper(); }
+	if (S->Status == EStillStatus::Idle && !S->Hopper.IsEmpty()) { Batch += FString::Printf(TEXT(" +%d"), S->Hopper.Num()); }
 	BatchGauge->SetText(FText::FromString(FString::Printf(TEXT("%s   cal %d%%"), *Batch, FMath::FloorToInt(S->Calibration * 100.f))));
 }
 

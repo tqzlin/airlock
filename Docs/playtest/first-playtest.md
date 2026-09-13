@@ -58,8 +58,8 @@ viewport). Nothing here needs a build.
 
 ## 5. Known rough edges (no need to report these)
 
-- The still gauges sit low against the tank and the base label repeats the first gauge line (a tuning pass is
-  queued). The lever labels show the still's status as their second line.
+- A cask dropped in a puddle lands on the crude, but the case's pivot is at its base, so a cask put down on a
+  ramp or a sill can clip the deck; pick it up again.
 - No sound yet: the pop's bang, the hiss, the horn are lines and lights only.
 - The flash (a fire on an overheated still in a gassy room) has no flicker yet, only the log and Okafor.
 - Nobody carries a blacked-out crewmate to the bunk yet; the bunk is a label.

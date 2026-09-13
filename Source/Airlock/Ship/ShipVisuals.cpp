@@ -5,6 +5,23 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
+UMaterialInterface* ShipVisuals::LabelMaterial()
+{
+	// Weak: the engine asset may be collected between worlds (tests); a reload of a loaded object is a lookup.
+	static TWeakObjectPtr<UMaterialInterface> Unlit;
+	static bool bLoggedMissing = false;
+	if (!Unlit.IsValid())
+	{
+		Unlit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/UnlitText.UnlitText"));
+		if (!Unlit.IsValid() && !bLoggedMissing)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Label material: UnlitText not found, labels keep the lit default"));
+			bLoggedMissing = true;
+		}
+	}
+	return Unlit.Get();
+}
+
 void ShipVisuals::ConfigureLabel(UTextRenderComponent* Label, float WorldSize, float FacingYaw,
 	FLinearColor Colour, FVector RelativeOffset)
 {
@@ -16,6 +33,16 @@ void ShipVisuals::ConfigureLabel(UTextRenderComponent* Label, float WorldSize, f
 	Label->SetRelativeRotation(FRotator(0, FacingYaw - OwnerYaw, 0));
 	Label->SetTextRenderColor(Colour.ToFColor(true));
 	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (UMaterialInterface* Unlit = LabelMaterial()) { if (Label->TextMaterial != Unlit) { Label->SetTextMaterial(Unlit); } }
+}
+
+void ShipVisuals::ConfigureLabelUnscaled(UTextRenderComponent* Label, float WorldSize, float FacingYaw,
+	FLinearColor Colour, FVector WorldOffset)
+{
+	FVector OwnerScale = Label->GetOwner() ? Label->GetOwner()->GetActorScale3D() : FVector::OneVector;
+	for (int32 Axis = 0; Axis < 3; ++Axis) { if (FMath::IsNearlyZero(OwnerScale[Axis])) { OwnerScale[Axis] = 1.f; } }
+	ConfigureLabel(Label, WorldSize, FacingYaw, Colour, WorldOffset / OwnerScale);
+	Label->SetRelativeScale3D(FVector::OneVector / OwnerScale);
 }
 
 void ShipVisuals::ApplyCargoHeat(UStaticMeshComponent* Body, float Heat)

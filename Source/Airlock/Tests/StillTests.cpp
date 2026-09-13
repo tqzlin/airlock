@@ -15,6 +15,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeLock.h"
@@ -167,10 +168,28 @@ bool FStillLeverTest::RunTest(const FString& Parameters)
 		for (EStillStatus Status : {EStillStatus::Idle,EStillStatus::Running,EStillStatus::Popped,EStillStatus::Flash,EStillStatus::Failed})
 		{
 			FRefineryState R=S.State->Refinery; R.Stills[0].Status=Status; S.State->PublishRefinery(R);
+			// M5-5: a lever's second line is its own reading; amber means "pull me now", never the still's status word.
+			const FString Text=C->Label->Text.ToString(); const bool bAmber=C->Label->TextRenderColor==FLinearColor(1,.65f,.1f).ToFColor(true);
+			TestFalse(TEXT("No status word on a lever"),Text.Contains(RefineryLayouts::StatusName(Status),ESearchCase::CaseSensitive) && I<4);
+			if (I==0) { TestEqual(TEXT("Reset line"),Text,FString(Status==EStillStatus::Popped ? TEXT("RESET\nhold E") : TEXT("RESET\nno pop"))); TestEqual(TEXT("Reset amber when popped"),bAmber,Status==EStillStatus::Popped); }
+			if (I==1) { TestEqual(TEXT("Purge line"),Text,FString(Status==EStillStatus::Flash ? TEXT("PURGE\nhold E") : TEXT("PURGE\nno flash"))); TestEqual(TEXT("Purge amber when flashed"),bAmber,Status==EStillStatus::Flash); }
+			if (I==2) { TestEqual(TEXT("Scrape reads coke"),Text,FString(TEXT("SCRAPE\ncoke 0%"))); TestFalse(TEXT("Clean coils stay white"),bAmber); }
+			if (I==3) { TestEqual(TEXT("Repair line"),Text,FString(Status==EStillStatus::Failed ? TEXT("REPAIR\nhold E") : TEXT("REPAIR\ncond 100%"))); TestEqual(TEXT("Repair amber when failed"),bAmber,Status==EStillStatus::Failed); }
+			if (I==4) { TestEqual(TEXT("Trap reads calibration"),Text,FString(TEXT("TRAP\ncal 100%"))); TestFalse(TEXT("Calibrated trap stays white"),bAmber); }
 			TestEqual(TEXT("Hold duration in every state"),IInteractable::Execute_GetInteractHoldSeconds(C),Seconds[I]);
 			TestFalse(TEXT("Prompt in every state"),IInteractable::Execute_GetInteractPrompt(C).IsEmpty());
 			TestEqual(TEXT("Lever predicate"),IInteractable::Execute_GetHoldRefusal(C).IsEmpty(),I==4 ? Status!=EStillStatus::Failed : Status==Allowed[I]);
 		}
+	}
+	{
+		// A fouled coil and a drifted trap turn their own levers amber with the reading.
+		FRefineryState R=S.State->Refinery; R.Stills[0].Status=EStillStatus::Idle; R.Stills[0].Coke=62; R.Stills[0].bFouled=true; R.Stills[0].Calibration=.76f; S.State->PublishRefinery(R);
+		auto* Scrape=S.Find<AStillControl>(TEXT("Still_1_Scrape")); auto* Cal=S.Find<AStillControl>(TEXT("Still_1_Calibrate"));
+		if (!Scrape || !Cal) { return false; }
+		const FColor Amber=FLinearColor(1,.65f,.1f).ToFColor(true);
+		TestEqual(TEXT("Fouled scrape line"),Scrape->Label->Text.ToString(),FString(TEXT("SCRAPE\ncoke 62%"))); TestEqual(TEXT("Fouled scrape amber"),Scrape->Label->TextRenderColor,Amber);
+		TestEqual(TEXT("Drifted trap line"),Cal->Label->Text.ToString(),FString(TEXT("TRAP\ncal 76%"))); TestEqual(TEXT("Drifted trap amber"),Cal->Label->TextRenderColor,Amber);
+		TestTrue(TEXT("Lever text in world centimetres on a 0.35 panel"),Cal->Label->GetComponentScale().Equals(FVector::OneVector,.001f));
 	}
 	return true;
 }
@@ -234,13 +253,27 @@ bool FStillGaugeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Batch from mirrored charge"),Still->BatchGauge->Text.ToString(),FString(TEXT("C1 42%   cal 70%")));
 	TestEqual(TEXT("High pressure red"),Still->BathGauge->TextRenderColor,FLinearColor::Red.ToFColor(true));
 	TestEqual(TEXT("Drift amber"),Still->BatchGauge->TextRenderColor,FLinearColor(1,.65f,.1f).ToFColor(true));
-	TestTrue(TEXT("Base label retained"),Still->CurrentLabel().Contains(TEXT("C1 42% 184K")));
-	const FVector Offsets[] = {FVector(0,-125,215),FVector(0,-125,195),FVector(0,-125,175)};
+	// M5-5: the base label is the name alone; the stack lives in world centimetres whatever the tank's 0.8 scale.
+	TestEqual(TEXT("Base label is the name alone"),Still->CurrentLabel(),FString(TEXT("STILL 1")));
+	TestTrue(TEXT("Name over the stack in world centimetres"),(Still->Label->GetComponentLocation()-Still->GetActorLocation()).Equals(FVector(0,-125,AStill::NameWorldHeight),.5f));
+	TestTrue(TEXT("Name text unscaled"),Still->Label->GetComponentScale().Equals(FVector::OneVector,.001f));
 	const UTextRenderComponent* Gauges[] = {Still->BathGauge,Still->KnobGauge,Still->BatchGauge};
-	for (int32 I=0; I<3; ++I) { TestEqual(TEXT("Gauge size"),Gauges[I]->WorldSize,18.f); TestTrue(TEXT("Specified relative offset"),Gauges[I]->GetRelativeLocation().Equals(Offsets[I])); }
+	for (int32 I=0; I<3; ++I)
+	{
+		TestEqual(TEXT("Gauge size"),Gauges[I]->WorldSize,AStill::GaugeWorldSize);
+		TestTrue(TEXT("Gauge world offset"),(Gauges[I]->GetComponentLocation()-Still->GetActorLocation()).Equals(AStill::GaugeWorldOffsets[I],.5f));
+		TestTrue(TEXT("Gauge text unscaled"),Gauges[I]->GetComponentScale().Equals(FVector::OneVector,.001f));
+		TestTrue(TEXT("Unlit label material"),Gauges[I]->TextMaterial && Gauges[I]->TextMaterial->GetName()==TEXT("UnlitText"));
+	}
+	TestTrue(TEXT("Stack clear of the 170 cm rim and the name"),AStill::GaugeWorldOffsets[2].Z-AStill::GaugeWorldSize/2>120.f
+		&& AStill::GaugeWorldOffsets[0].Z+AStill::GaugeWorldSize/2<AStill::NameWorldHeight-11.f);
+	for (int32 I=0; I<2; ++I) { TestTrue(TEXT("Lines do not touch"),AStill::GaugeWorldOffsets[I].Z-AStill::GaugeWorldOffsets[I+1].Z>=AStill::GaugeWorldSize+4.f); }
 	const EStillStatus States[] = {EStillStatus::Idle,EStillStatus::Popped,EStillStatus::Flash,EStillStatus::Failed};
 	const TCHAR* Labels[] = {TEXT("idle"),TEXT("POPPED"),TEXT("FLASH"),TEXT("FAILED")};
 	for (int32 I=0; I<4; ++I) { St.Status=States[I]; S.State->PublishRefinery(R); TestTrue(TEXT("Inactive status"),Still->BatchGauge->Text.ToString().StartsWith(Labels[I])); }
+	St.Status=EStillStatus::Idle; St.Hopper={TEXT("C2"),TEXT("C3")}; S.State->PublishRefinery(R);
+	TestTrue(TEXT("Idle with a queue shows it"),Still->BatchGauge->Text.ToString().StartsWith(TEXT("idle +2")));
+	St.Hopper.Empty();
 	St.PressureBar=1; St.Calibration=1; S.State->PublishRefinery(R);
 	TestEqual(TEXT("Normal pressure white"),Still->BathGauge->TextRenderColor,FColor::White); TestEqual(TEXT("Calibrated white"),Still->BatchGauge->TextRenderColor,FColor::White);
 	return true;
@@ -266,6 +299,13 @@ bool FStillPressTest::RunTest(const FString& Parameters)
 	Crew->SetActorLocation(FVector::ZeroVector);
 	FStillLogCapture Log; PC->ServerPress(TEXT("Still_2_HeatPlus")); PC->ServerPress(TEXT("MissingControl"));
 	TestEqual(TEXT("Distance refusal"),Log.Count(TEXT("Press Still_2_HeatPlus rejected: out of reach")),1); TestEqual(TEXT("Unknown refusal"),Log.Count(TEXT("Press MissingControl rejected: actor not found")),1);
+	// M5-5: the exposure helper logs a frame rate from whatever frame time it has (no local ticks in this world).
+	PC->AirlockFps(); TestEqual(TEXT("Fps helper logs once"),Log.Count(TEXT("Fps: ")),1);
+	TestTrue(TEXT("Fps line names the unit and the map"),Log.Text().Contains(TEXT(" fps, ")) && Log.Text().Contains(TEXT(" ms/frame, map=")));
+	// M5-5: on the floor the air warnings are Okafor's, without the ship captain's opener (the shared pattern has one).
+	S.Mode->AirSetPpm(60.f);
+	TestEqual(TEXT("Okafor speaks the danger line"),Log.Count(TEXT("Okafor: Air's bad. Get those scrubbers up")),1);
+	TestFalse(TEXT("No captain opener on the floor"),Log.Text().Contains(TEXT("here. Air's bad")));
 	return true;
 }
 #endif
