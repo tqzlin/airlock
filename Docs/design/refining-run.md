@@ -86,11 +86,11 @@ The `AGENTS.md` "What the game is" line would change from "instanced ~20-minute 
 
 ## 7. Risks and questions for Tom
 
-- **Names**: Vell, Halder, Vell crude / sludge, the Rig, Halder Solar Refinery — placeholders to keep or replace.
-- **Tone**: cyanide poisoning is grim on paper; on screen it is a vignette, a cough and a thirty-second blackout, which reads as hazard rather than gore. Say if the rating target needs it softer.
+- **Names** — *decided 2026-09-13 (Tom: Claude's judgement)*: Vell, Halder, Vell crude / sludge, the Vell Extractor (the Rig), the Halder Solar Refinery (the Still), the Hauler Mk1 hull **MV Corrin**, the fuel cut **diesel**, floor boss **Okafor**. Final; see `refinery-floor.md` section 2.
+- **Tone** — *decided 2026-09-13*: quasi-realistic, no concern for rating. Collapse, a second collapse is critical (out for the session, a medical fine), cryogenic spills burn; nothing softened, nothing played for gore. The med-bot line goes.
 - **Predictability**: a scripted fuel beat is a set piece; after three runs players expect it. Varying its cause and minute, and keeping the director's random faults around it, should hold it for the MVP; the long-term answer is a deck of set pieces per contract tier.
 - **Solo balance**: burning one of four casks is a quarter of the pay; the pay curve must keep "burn one, dock clean" above "rack all four, dock late" or solo players will never touch the bypass. The numbers in section 4 do that; playtest will move them.
-- **The refinery as a place**: arriving somewhere new is a strong moment and a small dock deck would sell it. Not for the MVP: the card and the tally carry it, and a second hub map costs a level pass.
+- **The refinery as a place** — *decided 2026-09-13*: yes, one walkable room with three stills where the crew dumps crude, works heat / feed / vent knobs and a drifting calibration, and gets a varying diesel yield with spills, fumes, pops, flashes and fouling as the risks. Design and milestones (M5-1..M5-5): `Docs/design/refinery-floor.md`.
 - **Realism bends** are listed in section 2; none of them is visible from inside the ship.
 
 ## 8. Next step
