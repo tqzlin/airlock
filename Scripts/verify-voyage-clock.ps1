@@ -85,7 +85,7 @@ try {
     # The six-second caption must disappear while the clock continues ticking.
     Start-Sleep -Seconds 7
     Save-VoyageProofCapture 'caption-hidden'
-    $null = Wait-VoyageProofLine 'Transition card: RETURNING TO STATION' 80
+    $null = Wait-VoyageProofLine 'Transition card: DOCKING - HALDER SOLAR REFINERY' 80
     Save-VoyageProofCapture 'return-card-1'
     Save-VoyageProofCapture 'return-card-2'
     Save-VoyageProofCapture 'return-card-3'
