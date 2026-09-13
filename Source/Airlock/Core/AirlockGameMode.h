@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Voyage/VoyageSchedule.h"
+#include "Voyage/VoyageSetPieces.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
@@ -60,6 +61,7 @@ public:
 	bool FuelClearInjectors();
 	bool FuelSet(float Units);
 	FString FuelSummary() const;
+	void FuelLeakConsole();
 	bool AirHasAtmosphere() const;
 	bool AirSetScrubMode(EScrubMode Mode);
 	bool AirSetPpm(float Ppm);
@@ -115,6 +117,14 @@ private:
 	bool bRecordedVoyageResult = false;
 	TArray<FVoyageAnnouncement> CaptainSchedule;
 	int32 NextCaptainEntry = 0;
+	TArray<FVoyageSetPiece> SetPieces;
+	int32 NextSetPiece = 0;
+	FTimerHandle FuelFollowupTimer;
+	bool bFuelFollowupPending = false;
+	void FireDueSetPieces(double Elapsed);
+	void FireSetPiece(const FVoyageSetPiece& Entry, double Elapsed);
+	void FuelFollowup();
+	void SpeakVoyageLine(const FText& Line);
 	FTimerHandle VoyageTimer;
 	TSoftObjectPtr<UWorld> HubLevel = TSoftObjectPtr<UWorld>(FSoftObjectPath(TEXT("/Game/Maps/StationHub.StationHub")));
 
