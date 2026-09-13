@@ -519,3 +519,43 @@ void AAirlockPlayerController::ServerCargoTally_Implementation()
 	}
 	else { UE_LOG(LogAirlock, Log, TEXT("Tally rejected: no game mode")); }
 }
+
+void AAirlockPlayerController::AirlockAir() { ServerAirStatus(); }
+void AAirlockPlayerController::AirlockScrub(FString Mode) { ServerScrubFromConsole(Mode); }
+void AAirlockPlayerController::AirlockAirSet(float Ppm) { ServerAirSet(Ppm); }
+void AAirlockPlayerController::AirlockExpose(float Percent) { ServerExpose(Percent); }
+void AAirlockPlayerController::ServerAirStatus_Implementation()
+{
+	const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Air status rejected: no game mode")); return; }
+	UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->AirSummary());
+	for (TActorIterator<AAirlockCharacter> It(GetWorld()); It; ++It)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Crew %s exposure=%d%% blackedOut=%d"), *It->GetName(), FMath::FloorToInt(It->Exposure), It->bBlackedOut);
+	}
+}
+void AAirlockPlayerController::ServerScrubFromConsole_Implementation(const FString& Mode)
+{
+	EScrubMode Parsed;
+	if (Mode.Equals(TEXT("Off"), ESearchCase::IgnoreCase)) { Parsed = EScrubMode::Off; }
+	else if (Mode.Equals(TEXT("Normal"), ESearchCase::IgnoreCase)) { Parsed = EScrubMode::Normal; }
+	else if (Mode.Equals(TEXT("Hazard"), ESearchCase::IgnoreCase)) { Parsed = EScrubMode::Hazard; }
+	else { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: unknown mode %s (Off|Normal|Hazard)"), *Mode); return; }
+	if (auto* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->SetScrubModeServer(Parsed, false); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: no crew pawn")); }
+}
+void AAirlockPlayerController::ServerAirSet_Implementation(float Ppm)
+{
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM || !GM->AirHasAtmosphere()) { UE_LOG(LogAirlock, Log, TEXT("Air set rejected: No atmosphere on this section")); return; }
+	const bool bOk = GM->AirSetPpm(Ppm);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockAirSet %.2f accepted=%d%s"), Ppm, bOk,
+		bOk ? TEXT("") : TEXT(" (unchanged or requires finite ppm in 0..500)"));
+}
+void AAirlockPlayerController::ServerExpose_Implementation(float Percent)
+{
+	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
+	const bool bOk = Crew && Crew->SetExposureServer(Percent);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockExpose %.2f accepted=%d%s"), Percent, bOk,
+		bOk ? TEXT("") : TEXT(" (requires a crew pawn and finite exposure in 0..100)"));
+}
