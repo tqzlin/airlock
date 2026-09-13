@@ -300,7 +300,7 @@ try {
     $null = Wait-FloorProofLine ': Tank [3-9][0-9][0-9] L diesel' 90 $loadAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C1' 120 $loadAt
     $null = Wait-FloorProofLine ": Okafor: That's diesel in the tank" 10 $loadAt
-    $null = Wait-FloorProofLine ': Still Still_1 Idle' 10 $loadAt
+    $null = Wait-FloorProofLine ': Still Still_1 Running cask=C3' 10 $loadAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_2 C2' 120 $handAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C3' 120 $loadAt
     Send-FloorCommand 'AirlockRefinery'
