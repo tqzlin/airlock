@@ -65,7 +65,8 @@ try {
     $null = Wait-LegibilityProofLine ': Incident director started: crew=1 entries=4' 45 $script:LastCommandAt
     Send-LegibilityCommand 'AirlockVoyageClock 1200'
     $null = Wait-LegibilityProofLine ': Cargo manifest: 12 casks, 10 slots' 5
-    Send-LegibilityCommand 'AirlockWarp -5450 1560 116'
+    # Beside C1: the walkway spot at X -5450 looks straight into the pack's barrel and tarp props (reviewer, 2026-09-12).
+    Send-LegibilityCommand 'AirlockWarp -6100 1500 116'
     Send-LegibilityCommand 'AirlockLook 90'
     Save-LegibilityCapture 'hold-north'
     Send-LegibilityCommand 'AirlockLook -90'
@@ -90,13 +91,14 @@ try {
     if ($captureSeconds -gt 5) { throw "Summary capture was late: $captureSeconds s after C4 heating" }
     Write-Host ('Summary captured {0:F2} s after C4 heating' -f $captureSeconds)
 
-    Send-LegibilityCommand 'AirlockWarp -1300 760 118'
+    # One step further back than the walkway spot so the life-support label and its light sit in frame.
+    Send-LegibilityCommand 'AirlockWarp -1400 760 118'
     Send-LegibilityCommand 'AirlockLook 0'
     Save-LegibilityCapture 'engineering-panel'
     Send-LegibilityCommand 'AirlockVoyageClock 1200'
     Send-LegibilityCommand 'AirlockFuelLeak'
     $null = Wait-LegibilityProofLine ': SetPiece FuelLeak' 5 $script:LastCommandAt
-    Send-LegibilityCommand 'AirlockWarp -1300 280 118'
+    Send-LegibilityCommand 'AirlockWarp -1380 280 118'
     Send-LegibilityCommand 'AirlockLook 0'
     Save-LegibilityCapture 'feed-leak-steam'
 

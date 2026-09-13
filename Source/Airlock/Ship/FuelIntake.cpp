@@ -35,7 +35,7 @@ void AFuelIntake::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		ShipVisuals::ConfigureLabel(Label, 22.f, Spec.LabelYaw, FLinearColor::White,
+		ShipVisuals::ConfigureLabel(Label, 14.f, Spec.LabelYaw, FLinearColor::White,
 			FVector(0,0,110));
 		bVisualsReady = true;
 	}

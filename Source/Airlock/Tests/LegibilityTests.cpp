@@ -331,8 +331,8 @@ bool FLegibilityFixtureTest::RunTest(const FString& Parameters)
 	Env.State->Fuel.BurningCrate = NAME_None; Env.State->OnShipGraphChanged.Broadcast();
 	TestEqual(TEXT("Ready intake"), Intake->Label->Text.ToString(), FString(TEXT("INTAKE\nready")));
 	TestEqual(TEXT("Crate light stays local"), Crate->HeatLight->AttenuationRadius, 120.f);
-	TestEqual(TEXT("Module light stays local"), Core->StatusLight->AttenuationRadius, 180.f);
-	TestEqual(TEXT("Module light intensity"), Core->StatusLight->Intensity, 150.f);
+	TestEqual(TEXT("Module light stays local"), Core->StatusLight->AttenuationRadius, 100.f);
+	TestEqual(TEXT("Module light intensity"), Core->StatusLight->Intensity, 12.f);
 	TestEqual(TEXT("Valve light unchanged"), Feed->LeakLight->Intensity, 80.f);
 	TestEqual(TEXT("Valve light radius unchanged"), Feed->LeakLight->AttenuationRadius, 140.f);
 	TestEqual(TEXT("Crate steam raised"), Crate->VentFX->GetRelativeLocation().Z, 80.0);
@@ -342,10 +342,16 @@ bool FLegibilityFixtureTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Steam scaled on component"), Steam->GetRelativeScale3D(), FVector(2.5));
 	}
-	for (auto* Text : { Core->Label.Get(), Line->Label.Get(), Crate->Label.Get(), Crate->StateLabel.Get(), Feed->Label.Get(), Bypass->Label.Get(), Intake->Label.Get() })
+	for (auto* Text : { Core->Label.Get(), Line->Label.Get(), Crate->Label.Get(), Crate->StateLabel.Get() })
 	{
 		TestEqual(TEXT("Labels use 22 cm"), Text->WorldSize, 22.f);
 		TestTrue(TEXT("Labels vertically centred"), Text->VerticalAlignment == EVRTA_TextCenter);
+	}
+	// Reviewer tuning (2026-09-12): the fixtures are read from the engineering walkway 130-250 cm away, where 22 cm filled the frame.
+	for (auto* Text : { Feed->Label.Get(), Bypass->Label.Get(), Intake->Label.Get() })
+	{
+		TestEqual(TEXT("Fixture labels use 14 cm"), Text->WorldSize, 14.f);
+		TestTrue(TEXT("Fixture labels vertically centred"), Text->VerticalAlignment == EVRTA_TextCenter);
 	}
 	for (TActorIterator<ACargoSlot> It(Env.World); It; ++It)
 	{

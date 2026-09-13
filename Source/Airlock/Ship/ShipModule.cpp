@@ -29,6 +29,9 @@ AShipModule::AShipModule()
 	StatusLight->SetupAttachment(ShipRoot);
 	StatusLight->SetIntensityUnits(ELightUnits::Candelas);
 	StatusLight->SetCastShadows(false);
+	// A cue on the module, not a room light: at 60 cd two status lights a metre from the engineering wall filled the
+	// whole view under the room's auto-exposure (M3-8 review); no fog scattering either.
+	StatusLight->SetVolumetricScatteringIntensity(0.f);
 }
 void AShipModule::Initialize(const FShipModuleSpec& InSpec)
 {
