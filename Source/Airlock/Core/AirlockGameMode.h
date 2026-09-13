@@ -37,6 +37,12 @@ public:
 	/** M4-1: every console helper's Server RPC asks this first. True while `airlock.DevCheats` is non-zero. */
 	virtual bool AllowCheats(APlayerController* Player) override;
 
+	/** M4-1: a start that already has a pawn on it sends the next arrival `ArrivalSpacing` cm to the side (alternating), never a spectator. */
+	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+
+	/** Sideways step between crew arriving at one PlayerStart (a capsule is 84 cm across). */
+	static constexpr float ArrivalSpacing = 120.f;
+
 	/** Section id of the station hub; a door targeting it always travels (and ends the pending voyage). */
 	static const FName HubSectionId;
 

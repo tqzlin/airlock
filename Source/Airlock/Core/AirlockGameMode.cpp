@@ -84,6 +84,47 @@ AActor* AAirlockGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	return Chosen;
 }
 
+APawn* AAirlockGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
+{
+	// Crew arrive in a row (M4-1): the second player through an airlock found the only PlayerStart occupied by the
+	// first and came home as a bodiless spectator ("SpawnActor failed because of collision"). A candidate spot with
+	// a pawn within 90 cm is skipped, the next lies ArrivalSpacing cm along the start's right axis, alternating
+	// sides; when nothing within 240 cm is clear the pawn is still spawned, adjusted where possible.
+	UWorld* World = GetWorld();
+	UClass* PawnClass = GetDefaultPawnClassForController(NewPlayer);
+	if (!World || !PawnClass) { return Super::SpawnDefaultPawnAtTransform_Implementation(NewPlayer, SpawnTransform); }
+	const FVector Right = SpawnTransform.GetRotation().GetRightVector();
+	static const float Steps[] = { 0.f, 1.f, -1.f, 2.f, -2.f };
+	for (float Step : Steps)
+	{
+		FTransform Candidate = SpawnTransform;
+		Candidate.SetLocation(SpawnTransform.GetLocation() + Right * (Step * ArrivalSpacing));
+		bool bOccupied = false;
+		for (TActorIterator<APawn> It(World); It && !bOccupied; ++It)
+		{
+			bOccupied = FVector::DistSquared2D(It->GetActorLocation(), Candidate.GetLocation()) < FMath::Square(ArrivalSpacing * 0.75f);
+		}
+		if (bOccupied) { continue; }
+		FActorSpawnParameters Params;
+		Params.Instigator = GetInstigator();
+		Params.ObjectFlags |= RF_Transient;
+		if (APawn* Pawn = World->SpawnActor<APawn>(PawnClass, Candidate, Params))
+		{
+			if (Step != 0.f)
+			{
+				UE_LOG(LogAirlock, Log, TEXT("Arrival spawn for %s stepped %+.0f cm aside: the start was occupied"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"), Step * ArrivalSpacing);
+			}
+			return Pawn;
+		}
+	}
+	FActorSpawnParameters Forced;
+	Forced.Instigator = GetInstigator();
+	Forced.ObjectFlags |= RF_Transient;
+	Forced.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	UE_LOG(LogAirlock, Warning, TEXT("Arrival spawn for %s forced at the start: no clear spot within %.0f cm"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"), 2.f * ArrivalSpacing);
+	return World->SpawnActor<APawn>(PawnClass, SpawnTransform, Forced);
+}
+
 void AAirlockGameMode::InitGameState()
 {
 	Super::InitGameState();
