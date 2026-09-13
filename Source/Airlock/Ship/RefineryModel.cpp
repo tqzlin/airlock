@@ -41,6 +41,19 @@ namespace
 		FRefineryEvent E; E.Type = Type; E.StillId = S.Id; E.CaskId = S.CurrentCask;
 		return E;
 	}
+
+	const TCHAR* StatusName(EStillStatus Status)
+	{
+		switch (Status)
+		{
+		case EStillStatus::Idle: return TEXT("Idle");
+		case EStillStatus::Running: return TEXT("Running");
+		case EStillStatus::Popped: return TEXT("Popped");
+		case EStillStatus::Flash: return TEXT("Flash");
+		case EStillStatus::Failed: return TEXT("Failed");
+		default: return TEXT("Unknown");
+		}
+	}
 }
 
 bool FStillState::operator==(const FStillState& O) const
@@ -299,4 +312,58 @@ void FRefineryModel::TickStill(FStillState& S, float Dt, float RoomPpm, float& O
 		if (S.Hopper.IsEmpty()) { S.Status = EStillStatus::Idle; }
 	}
 	if (S.Status != EStillStatus::Running) { S.FloodSeconds = 0.f; }
+}
+
+FFloorResult FRefineryModel::Tally(int32 Criticals, float ShipFuelUnitsMissing) const
+{
+	FFloorResult R;
+	R.CasksTotal = Floor.CasksDelivered; R.CasksRefined = Floor.CasksRefined; R.CasksLost = Floor.CasksLost;
+	R.CasksUnrefined = Floor.Waiting.Num();
+	for (const FStillState& S : Floor.Stills)
+	{
+		R.CasksUnrefined += S.Hopper.Num();
+		if (!S.CurrentCask.IsNone()) { ++R.CasksLost; }
+	}
+	R.DieselL = Floor.TankDieselL; R.GasL = Floor.TotalGasL; R.TarL = Floor.TotalTarL;
+	R.Spills = Floor.Spills; R.Pops = Floor.Pops; R.Flashes = Floor.Flashes; R.Criticals = FMath::Max(0, Criticals);
+	const float Missing = FMath::IsFinite(ShipFuelUnitsMissing) ? FMath::Max(0.f, ShipFuelUnitsMissing) : 0.f;
+	R.RefuelUnits = FMath::Min(Missing, R.DieselL * Rates.RefuelUnitsPerL);
+	R.SurplusL = FMath::Max(0.f, R.DieselL - R.RefuelUnits / Rates.RefuelUnitsPerL);
+	R.BaseFuelTonnes = FMath::FloorToInt(R.SurplusL / 100.f * Rates.BaseFuelTonnesPer100L);
+	const float Pay = FMath::RoundToFloat(Rates.DieselCrPerL * R.DieselL) + Rates.CrudeSaleCr * R.CasksUnrefined
+		- Rates.TarFeeCrPer100L * FMath::FloorToFloat(R.TarL / 100.f) - Rates.MedicalFineCr * R.Criticals;
+	R.Pay = FMath::Max(0, FMath::RoundToInt(Pay));
+	return R;
+}
+
+FString FFloorResult::Summary() const
+{
+	return FString::Printf(TEXT("floor: %d/%d casks refined, %d L diesel, %d L tar, %d spill%s, %d pop%s, %d critical%s, pay %d, fuel +%d t"),
+		CasksRefined, CasksTotal, FMath::FloorToInt(DieselL), FMath::FloorToInt(TarL), Spills, Spills == 1 ? TEXT("") : TEXT("s"),
+		Pops, Pops == 1 ? TEXT("") : TEXT("s"), Criticals, Criticals == 1 ? TEXT("") : TEXT("s"), Pay, BaseFuelTonnes);
+}
+
+FString FRefineryModel::StillReadout(FName Still) const
+{
+	const FStillState* S = FindStill(Still);
+	if (!S) { return FString(); }
+	return FString::Printf(TEXT("T %d K  P %.1f bar  feed %d%%  cal %d%%"), FMath::FloorToInt(S->TempK), S->PressureBar,
+		S->FeedSteps * 100 / Rates.KnobSteps, FMath::FloorToInt(S->Calibration * 100.f));
+}
+
+FString FRefineryModel::Summary() const
+{
+	TArray<FString> Lines;
+	for (const FStillState& S : Floor.Stills)
+	{
+		Lines.Add(FString::Printf(TEXT("%s %s T=%d P=%.1f heat=%d%% feed=%d%% vent=%d%% cal=%d%% coke=%d cond=%d cask=%s charge=%d"),
+			*S.Id.ToString(), StatusName(S.Status), FMath::FloorToInt(S.TempK), S.PressureBar,
+			S.HeatSteps * 100 / Rates.KnobSteps, S.FeedSteps * 100 / Rates.KnobSteps, S.VentSteps * 100 / Rates.KnobSteps,
+			FMath::FloorToInt(S.Calibration * 100.f), FMath::FloorToInt(S.Coke), FMath::FloorToInt(S.Condition),
+			S.CurrentCask.IsNone() ? TEXT("none") : *S.CurrentCask.ToString(), FMath::FloorToInt(S.ChargeL)));
+	}
+	Lines.Add(FString::Printf(TEXT("Tank diesel=%d gas=%d tar=%d spilled=%d refined=%d lost=%d waiting=%d"),
+		FMath::FloorToInt(Floor.TankDieselL), FMath::FloorToInt(Floor.TotalGasL), FMath::FloorToInt(Floor.TotalTarL),
+		FMath::FloorToInt(Floor.SpilledL), Floor.CasksRefined, Floor.CasksLost, Floor.Waiting.Num()));
+	return FString::Join(Lines, TEXT("\n"));
 }

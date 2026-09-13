@@ -41,6 +41,13 @@ namespace RefineryTests
 		M.SetKnob(StillId, ERefineryKnob::Vent, Vent);
 		FRun Preheat; Preheat.Advance(M, 240);
 	}
+	// Construct isolated report/boundary fixtures without exposing a mutable gameplay API.
+	FRefineryState& Fixture(FRefineryModel& M) { return const_cast<FRefineryState&>(M.State()); }
+	bool SameEvent(const FRefineryEvent& A, const FRefineryEvent& B)
+	{
+		return A.Type == B.Type && A.StillId == B.StillId && A.CaskId == B.CaskId && A.Litres == B.Litres
+			&& A.DieselL == B.DieselL && A.GasL == B.GasL && A.TarL == B.TarL;
+	}
 }
 using namespace RefineryTests;
 
@@ -564,6 +571,216 @@ bool FRefineryScrapeTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Running cannot purge"), M.Purge(StillId));
 	TestFalse(TEXT("Running cannot reset"), M.ClearPop(StillId));
 	TestTrue(TEXT("Rejections change nothing"), M.State() == Loaded);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryTallyExampleTest, "Airlock.Refinery.Model.ExactWorkedTallyAndConstResult",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryTallyExampleTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(12)); auto& S = Fixture(M);
+	S.Waiting = { Manifest(12)[10], Manifest(12)[11] };
+	S.CasksRefined = 9; S.CasksLost = 1; S.TankDieselL = 6420.f; S.TotalGasL = 900.f; S.TotalTarL = 1100.f;
+	S.Spills = 1; S.SpilledL = 200.f;
+	const FRefineryState Before = M.State(); const FFloorResult R = M.Tally(1, 100.f);
+	TestEqual(TEXT("Delivered"), R.CasksTotal, 12); TestEqual(TEXT("Refined"), R.CasksRefined, 9);
+	TestEqual(TEXT("Unrefined"), R.CasksUnrefined, 2); TestEqual(TEXT("Lost"), R.CasksLost, 1);
+	TestEqual(TEXT("Diesel"), R.DieselL, 6420.f); TestEqual(TEXT("Gas"), R.GasL, 900.f);
+	TestEqual(TEXT("Tar"), R.TarL, 1100.f); TestEqual(TEXT("Spills"), R.Spills, 1);
+	TestEqual(TEXT("Pops"), R.Pops, 0); TestEqual(TEXT("Flashes"), R.Flashes, 0);
+	TestEqual(TEXT("Criticals"), R.Criticals, 1); TestEqual(TEXT("Refuels ship first"), R.RefuelUnits, 100.f);
+	TestEqual(TEXT("Surplus"), R.SurplusL, 5420.f); TestEqual(TEXT("Base tonnes floored"), R.BaseFuelTonnes, 54);
+	TestEqual(TEXT("3210 + 80 - 110 - 200"), R.Pay, 2980);
+	TestEqual(TEXT("Exact worked line"), R.Summary(), FString(TEXT("floor: 9/12 casks refined, 6420 L diesel, 1100 L tar, 1 spill, 0 pops, 1 critical, pay 2980, fuel +54 t")));
+	TestTrue(TEXT("Tally records nothing"), M.State() == Before);
+	TestEqual(TEXT("Repeated tally unchanged"), M.Tally(1, 100.f).Summary(), R.Summary());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryPartialTallyTest, "Airlock.Refinery.Model.PartialCaskLostQueuedCrudeAndFuelBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryPartialTallyTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(3)); Recipe(M); M.LoadHopper(StillId, TEXT("C1")); M.LoadHopper(StillId, TEXT("C2"));
+	FRun Run; Run.Advance(M, 200); const auto Before = M.State();
+	const FFloorResult Partial = M.Tally(0, 0.f);
+	TestEqual(TEXT("One waiting plus one hopper"), Partial.CasksUnrefined, 2);
+	TestEqual(TEXT("Mid batch is lost at horn"), Partial.CasksLost, 1);
+	TestEqual(TEXT("Not refined early"), Partial.CasksRefined, 0);
+	TestEqual(TEXT("All delivered casks classified"), Partial.CasksRefined + Partial.CasksUnrefined + Partial.CasksLost, Partial.CasksTotal);
+	TestEqual(TEXT("Product already in tank survives horn"), Partial.DieselL, M.State().TankDieselL);
+	TestTrue(TEXT("Horn tally leaves batch running"), M.State() == Before);
+	for (float Missing : { -10.f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() })
+	{
+		const FFloorResult R = M.Tally(-1, Missing);
+		TestEqual(TEXT("Bad missing reads zero"), R.RefuelUnits, 0.f);
+		TestEqual(TEXT("All product surplus"), R.SurplusL, M.State().TankDieselL);
+		TestEqual(TEXT("Negative criticals do not award a bonus"), R.Criticals, 0);
+	}
+	const FFloorResult EmptyTank = M.Tally(100, 10000.f);
+	TestEqual(TEXT("Ship takes all available units"), EmptyTank.RefuelUnits, M.State().TankDieselL * 0.1f);
+	TestEqual(TEXT("No surplus after emptying tank"), EmptyTank.SurplusL, 0.f, 0.001f);
+	TestEqual(TEXT("No negative fuel from rounding"), EmptyTank.BaseFuelTonnes, 0);
+	TestEqual(TEXT("Pay cannot go negative"), EmptyTank.Pay, 0);
+	FRefineryModel Empty; Empty.Build(0, {});
+	TestEqual(TEXT("Empty floor pay"), Empty.Tally(0, 100.f).Pay, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryRoundingTest, "Airlock.Refinery.Model.TallyRoundingAndFlooredReadouts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryRoundingTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(2, {}); FRefineryState& S = Fixture(M);
+	S.CasksDelivered = 12; S.CasksRefined = 9; S.CasksLost = 1;
+	S.Waiting = Manifest(2); S.TankDieselL = 6420.9f; S.TotalGasL = 900.9f; S.TotalTarL = 1100.9f; S.SpilledL = 200.9f;
+	FStillState& Still = S.Stills[1]; Still.Status = EStillStatus::Running;
+	Still.TempK = 184.9f; Still.PressureBar = 1.64f; Still.HeatSteps = 8; Still.FeedSteps = 10;
+	Still.Calibration = 0.829f; Still.Coke = 12.9f; Still.Condition = 100.f;
+	Still.CurrentCask = TEXT("C4"); Still.ChargeL = 420.9f;
+	TestEqual(TEXT("Constructed gauge"), M.StillReadout(TEXT("Still_2")), FString(TEXT("T 184 K  P 1.6 bar  feed 50%  cal 82%")));
+	TestEqual(TEXT("Unknown gauge empty"), M.StillReadout(TEXT("Missing")), FString());
+	TestEqual(TEXT("Constructed still and tank summary"), M.Summary(), FString(
+		TEXT("Still_1 Idle T=92 P=1.0 heat=0% feed=0% vent=55% cal=100% coke=0 cond=100 cask=none charge=0\n")
+		TEXT("Still_2 Running T=184 P=1.6 heat=40% feed=50% vent=55% cal=82% coke=12 cond=100 cask=C4 charge=420\n")
+		TEXT("Tank diesel=6420 gas=900 tar=1100 spilled=200 refined=9 lost=1 waiting=2")));
+	for (int32 Step = 0; Step <= 20; ++Step)
+	{
+		M.SetKnob(TEXT("Still_2"), ERefineryKnob::Feed, Step);
+		TestTrue(TEXT("Every five percent prints exactly"), M.StillReadout(TEXT("Still_2")).Contains(FString::Printf(TEXT("feed %d%%"), Step * 5)));
+	}
+	S.TankDieselL = 1001.f; S.TotalTarL = 199.99f; S.Waiting.Reset(); Still.CurrentCask = NAME_None;
+	const FFloorResult R = M.Tally(0, 0.f);
+	TestEqual(TEXT("Diesel rounds 500.5 up; one complete tar hundred costs ten"), R.Pay, 491);
+	TestEqual(TEXT("Only whole surplus tonnes"), R.BaseFuelTonnes, 10);
+	FFloorResult Display; Display.CasksTotal = 2; Display.CasksRefined = 1; Display.DieselL = 850.9f;
+	Display.TarL = 100.9f; Display.Spills = 2; Display.Pops = 1; Display.Criticals = 2;
+	TestEqual(TEXT("Constructed plural and floored result"), Display.Summary(), FString(TEXT("floor: 1/2 casks refined, 850 L diesel, 100 L tar, 2 spills, 1 pop, 2 criticals, pay 0, fuel +0 t")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryEventOrderTest, "Airlock.Refinery.Model.EventOrderAndDestructiveLossAccounting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryEventOrderTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(1)); Recipe(M, 8, 18, 0); M.LoadHopper(StillId, TEXT("C1"));
+	FRun Run; Run.Advance(M, 19);
+	// Place the pressure just below relief so this slice floods first, then pops.
+	Fixture(M).Stills[0].PressureBar = 2.9999f;
+	Run.Advance(M, 1);
+	TestEqual(TEXT("Flood pop and relief spill"), Run.Events.Num(), 3);
+	TestEqual(TEXT("Flood first"), Run.Events[0].Type, ERefineryEvent::Spill);
+	TestEqual(TEXT("Pop second"), Run.Events[1].Type, ERefineryEvent::Pop);
+	TestEqual(TEXT("Relief spill third"), Run.Events[2].Type, ERefineryEvent::Spill);
+	TestEqual(TEXT("Flood exactly 200"), Run.Events[0].Litres, 200.f);
+	TestEqual(TEXT("Relief exactly 300"), Run.Events[2].Litres, 300.f);
+	TestEqual(TEXT("One lost cask for both causes"), M.State().CasksLost, 1);
+	TestEqual(TEXT("Two physical spills"), M.State().Spills, 2);
+	TestTrue(TEXT("Diesel credited before pop"), M.State().TankDieselL > 0.f);
+	const float Tank = M.State().TankDieselL;
+	const float Accounted = Tank + M.State().TotalGasL + M.State().TotalTarL + M.State().SpilledL;
+	// A destructive event discards unfed litres beyond its spill. No LostL field exists in the brief.
+	TestEqual(TEXT("90 processed + 500 spilled; 410 discarded by pop"), Accounted, 590.f, 0.5f);
+	Run.Advance(M, 40); TestEqual(TEXT("Pop never erases prior diesel"), M.State().TankDieselL, Tank);
+	AddInfo(TEXT("Conservation excludes discarded charge: simultaneous flood/pop leaves 590 L tracked and 410 L lost; no LostL field is specified."));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryDeterminismTest, "Airlock.Refinery.Model.ScriptedTenMinuteDeterminismAndEventEquality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryDeterminismTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel A, B; A.Build(3, Manifest(12)); B.Build(3, Manifest(12));
+	const auto Inputs = [](FRefineryModel& M, int32 I)
+	{
+		if (I == 0)
+		{
+			for (int32 J = 1; J <= 3; ++J)
+			{
+				const FName Id(*FString::Printf(TEXT("Still_%d"), J));
+				M.SetKnob(Id, ERefineryKnob::Heat, J == 1 ? 10 : J == 2 ? 16 : 18);
+				M.SetKnob(Id, ERefineryKnob::Feed, J == 2 ? 18 : 10);
+				M.SetKnob(Id, ERefineryKnob::Vent, J == 1 ? 2 : 13);
+			}
+		}
+		if (I == 240)
+		{
+			for (int32 J = 0; J < 9; ++J)
+			{
+				M.LoadHopper(FName(*FString::Printf(TEXT("Still_%d"), J / 3 + 1)), FName(*FString::Printf(TEXT("C%d"), J + 1)));
+			}
+		}
+		if (I == 400)
+		{
+			M.ClearPop(StillId); M.SetKnob(StillId, ERefineryKnob::Heat, 8); M.SetKnob(StillId, ERefineryKnob::Vent, 11);
+			M.Purge(TEXT("Still_3")); M.SetKnob(TEXT("Still_3"), ERefineryKnob::Heat, 6);
+		}
+		if (I == 600) { M.SetKnob(TEXT("Still_2"), ERefineryKnob::Feed, 10); M.SetKnob(TEXT("Still_2"), ERefineryKnob::Heat, 8); }
+		if (I == 1000) { M.LoadHopper(StillId, TEXT("C10")); M.LoadHopper(TEXT("Still_2"), TEXT("C11")); M.LoadHopper(TEXT("Still_3"), TEXT("C12")); }
+		if (I % 360 == 0) { M.Calibrate(StillId); M.Calibrate(TEXT("Still_2")); M.Calibrate(TEXT("Still_3")); }
+		if (I == 1600) { M.Repair(TEXT("Still_3")); M.Scrape(TEXT("Still_2")); }
+	};
+	int32 Pops = 0, Flashes = 0, Spills = 0, Done = 0;
+	for (int32 I = 0; I < 2400; ++I)
+	{
+		Inputs(A, I); Inputs(B, I);
+		const float Room = I >= 240 && I < 320 ? 45.f : 0.f;
+		float PpmA, PpmB; TArray<FRefineryEvent> EA, EB;
+		TestEqual(TEXT("Identical publication"), A.Tick(0.25f, Room, PpmA, EA), B.Tick(0.25f, Room, PpmB, EB));
+		TestTrue(TEXT("Every field exactly deterministic"), A.State() == B.State());
+		TestEqual(TEXT("Identical emitted ppm"), PpmA, PpmB); TestEqual(TEXT("Identical event count"), EA.Num(), EB.Num());
+		for (int32 J = 0; J < FMath::Min(EA.Num(), EB.Num()); ++J)
+		{
+			TestTrue(TEXT("Every event field exactly equal"), SameEvent(EA[J], EB[J]));
+			Pops += EA[J].Type == ERefineryEvent::Pop; Flashes += EA[J].Type == ERefineryEvent::Flash;
+			Spills += EA[J].Type == ERefineryEvent::Spill; Done += EA[J].Type == ERefineryEvent::BatchDone;
+		}
+	}
+	TestTrue(TEXT("Script exercises pops"), Pops > 0); TestTrue(TEXT("Script exercises flashes"), Flashes > 0);
+	TestTrue(TEXT("Script exercises spills"), Spills > 0); TestTrue(TEXT("Script completes batches after recovery"), Done > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryHazardSubstepsTest, "Airlock.Refinery.Model.SubstepsPreserveHazardOrderAndRoomInput",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryHazardSubstepsTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel A; A.Build(2, Manifest(2)); Recipe(A, 18, 10, 13);
+	A.LoadHopper(StillId, TEXT("C1")); A.LoadHopper(TEXT("Still_2"), TEXT("C2"));
+	Fixture(A).Stills[1].TempK = A.FindStill(StillId)->TempK;
+	A.SetKnob(TEXT("Still_2"), ERefineryKnob::Heat, 18);
+	A.SetKnob(TEXT("Still_2"), ERefineryKnob::Vent, 13);
+	FRefineryModel B = A; TArray<FRefineryEvent> LargeEvents; float Ppm;
+	A.Tick(1.f, 40.f, Ppm, LargeEvents); FRun Small; Small.Advance(B, 4, 40.f);
+	TestTrue(TEXT("Hazard states equal across caller deltas"), A.State() == B.State());
+	TestEqual(TEXT("Same hazard count"), LargeEvents.Num(), Small.Events.Num());
+	for (int32 I = 0; I < FMath::Min(LargeEvents.Num(), Small.Events.Num()); ++I)
+	{ TestTrue(TEXT("Hazard order and values equal"), SameEvent(LargeEvents[I], Small.Events[I])); }
+	TestEqual(TEXT("Accumulated ppm"), Ppm, Small.Ppm, 0.001f);
+	TestEqual(TEXT("Both flash in still order"), LargeEvents.Num(), 2);
+	TestEqual(TEXT("First still first"), LargeEvents[0].StillId, StillId);
+	TestEqual(TEXT("Second still second"), LargeEvents[1].StillId, FName(TEXT("Still_2")));
+	A.Rebuild(); Recipe(A, 18, 10, 13); A.LoadHopper(StillId, TEXT("C1"));
+	FRun Below; Below.Advance(A, 4, 39.99f);
+	TestTrue(TEXT("Room sources are produced"), Below.Ppm > 0.f);
+	TestEqual(TEXT("Output never feeds back into input to cause flash"), A.State().Flashes, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryCalibrationCutTest, "Airlock.Refinery.Model.CalibrationLossActuallyBecomesTar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryCalibrationCutTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel Clean; Clean.Build(1, Manifest(1)); Recipe(Clean);
+	FRefineryModel Drifted = Clean; Fixture(Drifted).Stills[0].Calibration = 0.5f;
+	Clean.LoadHopper(StillId, TEXT("C1")); Drifted.LoadHopper(StillId, TEXT("C1"));
+	FRun CleanRun, DriftedRun; CleanRun.Advance(Clean, 400); DriftedRun.Advance(Drifted, 400);
+	const float LostDiesel = Clean.State().TankDieselL - Drifted.State().TankDieselL;
+	TestEqual(TEXT("Half calibration loses a quarter of the undrifted bell cut"), LostDiesel, 207.95f, 0.5f);
+	TestEqual(TEXT("Gas formula does not depend on calibration"), Drifted.State().TotalGasL, Clean.State().TotalGasL);
+	TestEqual(TEXT("Lost diesel instead becomes tar by residual formula"), Drifted.State().TotalTarL - Clean.State().TotalTarL, LostDiesel, 0.01f);
+	TestEqual(TEXT("Calibration does not raise gas ppm with this formula"), DriftedRun.Ppm, CleanRun.Ppm);
+	AddInfo(TEXT("Starting calibration 50% loses 207.95 L diesel over the heavy recipe; all 207.95 L goes to tar, not gas, under the brief's formulas."));
 	return true;
 }
 #endif

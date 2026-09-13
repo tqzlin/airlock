@@ -76,9 +76,9 @@ struct AIRLOCK_API FRefineryRates
 	UPROPERTY(EditAnywhere) float MaxStepSeconds = 0.25f;
 	UPROPERTY(EditAnywhere) float SlotSeconds = 600.f;
 	UPROPERTY(EditAnywhere) float DieselCrPerL = 0.5f;
-	UPROPERTY(EditAnywhere) int32 CrudeSaleCr = 40;
+	UPROPERTY(EditAnywhere) float CrudeSaleCr = 40.f;
 	UPROPERTY(EditAnywhere) float TarFeeCrPer100L = 10.f;
-	UPROPERTY(EditAnywhere) int32 MedicalFineCr = 200;
+	UPROPERTY(EditAnywhere) float MedicalFineCr = 200.f;
 	UPROPERTY(EditAnywhere) float RefuelUnitsPerL = 0.1f;
 	UPROPERTY(EditAnywhere) float BaseFuelTonnesPer100L = 1.f;
 };
@@ -160,7 +160,9 @@ struct AIRLOCK_API FFloorResult
 	FString Summary() const;
 };
 
-/** Pure batch refinery. Precise litres stay in State; the owner applies tick events and room ppm. */
+/** Pure batch refinery. Precise litres stay in State; the owner applies tick events and room ppm.
+ * Build expects unique, non-None manifest ids. Rates' sizes, time constants and divisors must stay positive.
+ */
 class AIRLOCK_API FRefineryModel
 {
 public:
@@ -180,6 +182,7 @@ public:
 	bool Calibrate(FName Still);
 	// Resets OutRoomPpm, appends to OutEvents. RoomPpm is a fixed input throughout all slices.
 	bool Tick(float DeltaSeconds, float RoomPpm, float& OutRoomPpm, TArray<FRefineryEvent>& OutEvents);
+	// Loaded, unfinished casks count as lost in this result; State itself is unchanged.
 	FFloorResult Tally(int32 Criticals, float ShipFuelUnitsMissing) const;
 	FString Summary() const;
 	FString StillReadout(FName Still) const;
