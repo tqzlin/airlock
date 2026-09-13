@@ -86,7 +86,10 @@ $controlOffsets = @(@('Hopper',-200,-200), @('HeatMinus',-120,-200), @('HeatPlus
 $controlSpots = @()
 for ($i=1; $i -le 3; $i++) {
     $stillX = -5800 + ($i-1)*400
-    foreach ($offset in $controlOffsets) { $controlSpots += ,@("Still_${i}_$($offset[0])", ($stillX+$offset[1]), (1900+$offset[2])) }
+    foreach ($offset in $controlOffsets) {
+        $controlY = if ($i -eq 3 -and $offset[0] -ne 'Hopper') { 1600 } else { 1900+$offset[2] }
+        $controlSpots += ,@("Still_${i}_$($offset[0])", ($stillX+$offset[1]), $controlY)
+    }
 }
 
 try {
@@ -114,7 +117,7 @@ try {
         Write-Host "FLOOR POSITIONS REPORTED: $($rows.Count) spots (feet Z per spot in $proofDir/floor-position-probe.csv)"
         for ($i=1; $i -le 3; $i++) {
             $stillX = -5800 + ($i-1)*400
-            Send-FloorCommand "AirlockWarp $stillX 1600 116"
+            Send-FloorCommand "AirlockWarp $stillX 1450 116"
             Send-FloorCommand 'AirlockLook 90'
             Save-FloorCapture "floor-still-$i-face" 4
         }
