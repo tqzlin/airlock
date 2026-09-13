@@ -2,7 +2,7 @@
 # default 8000):
 #   powershell -ExecutionPolicy Bypass -File Scripts/verify-floor.ps1 [-ProbePositions]
 # The ship docks (clock expiry) on the floor with the run's intact casks on the pallets, Okafor runs the slot, C1 is
-# refined in Still 1 by console (M5-3a: knobs, load, the batch, the tank), the slot's end takes everyone home with the
+# refined in Still 1 by console and C2 in Still 2 through the physical controls (M5-3b), the slot's end takes everyone home with the
 # combined result and the diesel surplus on the Rig's board. Only the file console drives gameplay; captures and the log
 # excerpt land in Saved/AgentCaptures/M5-2; HUD text is capture-only. -ProbePositions instead opens the floor map,
 # drops the pawn on every fixture, cask and panel spot and reports where its feet settle (the layout Z is the
@@ -11,7 +11,7 @@ param([switch]$ProbePositions)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib/mcp.ps1')
 $root = Split-Path $PSScriptRoot -Parent
-$proofDir = Join-Path $root 'Saved/AgentCaptures/M5-2'
+$proofDir = Join-Path $root 'Saved/AgentCaptures/M5-3b'
 $commandPath = Join-Path $root 'Saved/AgentConsole/commands.txt'
 New-Item -ItemType Directory -Force -Path $proofDir, (Split-Path $commandPath -Parent) | Out-Null
 $script:ProofStart = [DateTime]::UtcNow
@@ -79,6 +79,18 @@ function Read-FloorProbe([string]$Id, [double]$X, [double]$Y, [double]$DropZ) {
 $fixtureSpots = @(@('Still_1', -5800, 1900), @('Still_2', -5400, 1900), @('Still_3', -5000, 1900), @('Tank', -4650, 1900), @('Drain', -5400, 1560), @('Bunk', -6650, 1250), @('Panel', -5400, 1150))
 $caskSpots = @()
 foreach ($y in 1400, 1250) { foreach ($x in -6240, -6080, -5920, -5760, -5600, -5440) { $caskSpots += ,@("Spot_$($x)_$y", $x, $y) } }
+# Unscaled control offsets from RefineryLayouts::StillControls. Probe the deck under each actor, including the raised levers.
+$controlOffsets = @(@('Hopper',-200,-200), @('HeatMinus',-120,-200), @('HeatPlus',-80,-200),
+    @('FeedMinus',-20,-200), @('FeedPlus',20,-200), @('VentMinus',80,-200), @('VentPlus',120,-200),
+    @('Reset',-75,-130), @('Purge',-25,-130), @('Scrape',25,-130), @('Repair',75,-130), @('Calibrate',150,-60))
+$controlSpots = @()
+for ($i=1; $i -le 3; $i++) {
+    $stillX = -5800 + ($i-1)*400
+    foreach ($offset in $controlOffsets) {
+        $controlY = if ($i -eq 3 -and $offset[0] -ne 'Hopper') { 1600 } else { 1900+$offset[2] }
+        $controlSpots += ,@("Still_${i}_$($offset[0])", ($stillX+$offset[1]), $controlY)
+    }
+}
 
 try {
     Mcp-Init
@@ -99,10 +111,16 @@ try {
         $script:StartedPIE = $true
         $null = Wait-FloorProofLine ': Section RefineryFloor:' 30
         $rows = @()
-        foreach ($spot in $fixtureSpots + $caskSpots) { $rows += Read-FloorProbe $spot[0] $spot[1] $spot[2] 200 }
+        foreach ($spot in $fixtureSpots + $caskSpots + $controlSpots) { $rows += Read-FloorProbe $spot[0] $spot[1] $spot[2] 200 }
         $rows | Format-Table -AutoSize | Out-String | Write-Host
         $rows | Export-Csv -LiteralPath (Join-Path $proofDir 'floor-position-probe.csv') -NoTypeInformation
         Write-Host "FLOOR POSITIONS REPORTED: $($rows.Count) spots (feet Z per spot in $proofDir/floor-position-probe.csv)"
+        for ($i=1; $i -le 3; $i++) {
+            $stillX = -5800 + ($i-1)*400
+            Send-FloorCommand "AirlockWarp $stillX 1450 116"
+            Send-FloorCommand 'AirlockLook 90'
+            Save-FloorCapture "floor-still-$i-face" 4
+        }
         return
     }
 
@@ -146,6 +164,7 @@ try {
     $null = Wait-FloorProofLine ': Section RefineryFloor:' 60 $dockAt
     $null = Wait-FloorProofLine ': Slot clock started: 600s' 30 $dockAt 'casks=2'
     $null = Wait-FloorProofLine ': Floor fixtures: 6' 30 $dockAt
+    $null = Wait-FloorProofLine ': Still controls: 36' 30 $dockAt
     $null = Wait-FloorProofLine ': Okafor, floor three' 30 $dockAt
     $null = Wait-FloorProofLine ': Arrival spawn for' 30 $dockAt 'X=-6660.'
     Start-Sleep -Seconds 6
@@ -194,27 +213,63 @@ try {
     $null = Wait-FloorProofLine ': Refinery Still_1 loaded C1' 10 $loadAt '(hopper 1/3)'
     $null = Wait-FloorProofLine ': Cargo C1 Loaded' 10 $loadAt
     $null = Wait-FloorProofLine ': Still Still_1 Running cask=C1' 10 $loadAt
+    # Run the light cask by hand alongside C1, before it can warm and vent on the staging deck.
+    Send-FloorCommand 'AirlockWarp -6080 1560 116'
+    Start-Sleep -Seconds 2
+    Send-FloorCommand 'AirlockCarry C2'
+    $null = Wait-FloorProofLine ': Carry C2 by' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockWarp -5400 1600 116'
+    Start-Sleep -Seconds 2
+    $handAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockPress Still_2_Hopper'
+    $null = Wait-FloorProofLine ': Load C2 into Still_2 by' 10 $handAt
+    $null = Wait-FloorProofLine ': Refinery Still_2 loaded C2' 10 $handAt
+    $null = Wait-FloorProofLine ': Cargo C2 Loaded' 10 $handAt
+    for ($i=0; $i -lt 6; $i++) { Send-FloorCommand 'AirlockPress Still_2_HeatPlus' }
+    $null = Wait-FloorProofLine ': Refinery Still_2 heat 6/20' 10 $handAt
+    $repeatAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockHold Still_2_HeatPlus'
+    Start-Sleep -Seconds 1
+    Send-FloorCommand 'AirlockRelease'
+    $steps = @(Get-FloorProofLines ': Refinery Still_2 heat [0-9]+/20' $repeatAt)
+    if ($steps.Count -lt 3) { throw "Repeating handle produced only $($steps.Count) steps" }
+    Write-Host "Held heat handle: $($steps.Count) steps"
+    Send-FloorCommand 'AirlockKnob Still_2 Heat 6'
+    for ($i=0; $i -lt 10; $i++) { Send-FloorCommand 'AirlockPress Still_2_FeedPlus' }
+    $null = Wait-FloorProofLine ': Refinery Still_2 feed 10/20' 10 $handAt
+    $null = Wait-FloorProofLine ': Still Still_2 Running cask=C2' 10 $handAt
+    Send-FloorCommand 'AirlockHold Still_2_Calibrate'
+    $null = Wait-FloorProofLine ': Hold Still_2_Calibrate complete' 10 $script:LastCommandAt
+    $null = Wait-FloorProofLine ': Refinery Still_2 calibrated' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockHold Still_2_Reset'
+    $null = Wait-FloorProofLine ': Hold Still_2_Reset rejected: Running' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockLook 90'
+    Save-FloorCapture 'floor-still-gauges' 4
+    Send-FloorCommand 'AirlockWarp -5400 1450 116'
+    Send-FloorCommand 'AirlockLook 90 -20'
+    Save-FloorCapture 'floor-still-handles' 4
     Send-FloorCommand 'AirlockWarp -5800 1500 116'
     Send-FloorCommand 'AirlockLook 90'
     Save-FloorCapture 'floor-still-running' 4
-    $null = Wait-FloorProofLine ': Tank 300 L diesel' 90 $loadAt
+    $null = Wait-FloorProofLine ': Tank [3-9][0-9][0-9] L diesel' 90 $loadAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C1' 120 $loadAt
     $null = Wait-FloorProofLine ": Okafor: That's diesel in the tank" 10 $loadAt
     $null = Wait-FloorProofLine ': Still Still_1 Idle' 10 $loadAt
+    $null = Wait-FloorProofLine ': Refinery BatchDone Still_2 C2' 120 $handAt
     Send-FloorCommand 'AirlockRefinery'
     $tank = Wait-FloorProofLine ': Tank diesel=' 10 $script:LastCommandAt
     $litres = [int][regex]::Match([string]$tank, 'Tank diesel=(\d+)').Groups[1].Value
     if ($litres -lt 600) { throw "The batch yielded too little: $tank" }
     Send-FloorCommand 'AirlockTally'
-    $null = Wait-FloorProofLine ': Floor tally now: floor: 1/2 casks refined' 10 $script:LastCommandAt
+    $null = Wait-FloorProofLine ': Floor tally now: floor: 2/2 casks refined' 10 $script:LastCommandAt
     Save-FloorCapture 'floor-tank' 2
 
     # The slot's end: the horn, the combined result, the card home, the hub board.
     $hornAt = [DateTime]::UtcNow
     Send-FloorCommand 'AirlockVoyageClock 5'
     $null = Wait-FloorProofLine ': Horn. Slot' 30 $hornAt
-    $null = Wait-FloorProofLine ': Floor result: floor: 1/2 casks refined' 30 $hornAt
-    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 1/2 casks refined,'
+    $null = Wait-FloorProofLine ': Floor result: floor: 2/2 casks refined' 30 $hornAt
+    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 2/2 casks refined,'
     $null = Wait-FloorProofLine 'Transition card: UNDOCKING - HOME TO THE VELL EXTRACTOR' 30 $hornAt
     $null = Wait-FloorProofLine ': Arrival spawn for' 45 $hornAt 'X=-5640.'
     Start-Sleep -Seconds 6
@@ -227,7 +282,7 @@ try {
     Save-FloorCapture 'hub-board-floor' 3
     Send-FloorCommand 'AirlockSaveReset'
     $null = Wait-FloorProofLine ': Save reset:' 10 $script:LastCommandAt
-    Write-Host "FLOOR OK: Milk run -> C1 secured, C2 racked -> clock docks at the refinery -> floor: two casks on the pallets, Okafor, air, scrubber panel, six fixtures -> Still 1 at heat 40 % / feed 50 %, C1 loaded, batch done, $litres L in the tank -> horn -> combined result (1/2 refined, +$tonnes t), undocking card -> hub board, save reset"
+    Write-Host "FLOOR OK: Milk run -> C1 secured, C2 racked -> floor: two casks, six fixtures, 36 controls -> Still 1 console batch and Still 2 by-hand light batch (load, taps, repeat, calibrate, reset refusal), both done, $litres L diesel -> horn -> combined result (2/2 refined, +$tonnes t), undocking card -> hub board, save reset"
 }
 finally {
     if ($script:StartedPIE) {

@@ -27,6 +27,7 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/FuelIntake.h"
+#include "Ship/StillControl.h"
 #include "Ship/RefineryLayouts.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
@@ -425,6 +426,7 @@ void AAirlockPlayerController::AirlockDamage(FName ModuleId, float Amount) { Ser
 void AAirlockPlayerController::AirlockRepairModule(FName ModuleId, float Amount) { ServerAdjustShipModule(ModuleId, Amount, true); }
 void AAirlockPlayerController::AirlockShipStatus() { ServerShipStatus(); }
 void AAirlockPlayerController::AirlockHold(FString TargetLabel) { ServerHoldByLabel(TargetLabel); }
+void AAirlockPlayerController::AirlockPress(FString TargetLabel) { ServerPress(TargetLabel); }
 void AAirlockPlayerController::AirlockRelease() { ServerReleaseHold(); }
 
 void AAirlockPlayerController::ServerShipFault_Implementation(FName LineId, const FString& Fault)
@@ -483,6 +485,35 @@ void AAirlockPlayerController::ServerReleaseHold_Implementation()
 	if (!CheatAllowed(TEXT("AirlockRelease"))) { return; }
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockRelease"));
 	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerEndHold(); }
+}
+
+void AAirlockPlayerController::ServerPress_Implementation(const FString& TargetLabel)
+{
+	if (!CheatAllowed(TEXT("AirlockPress"))) { return; }
+	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Press %s rejected: no crew pawn"), *TargetLabel); return; }
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->GetActorNameOrLabel() != TargetLabel) { continue; }
+		AActor* Target = *It;
+		if (!Crew->IsInHoldRange(Target)) { UE_LOG(LogAirlock, Log, TEXT("Press %s rejected: out of reach"), *TargetLabel); return; }
+		if (Crew->bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Press %s rejected: blacked out"), *TargetLabel); return; }
+		if (Crew->IsSeated()) { Crew->ServerStandUp(); return; }
+		if (Crew->CarriedCrate)
+		{
+			if (auto* Slot = Cast<ACargoSlot>(Target)) { Crew->ServerPlace(Slot); }
+			else if (auto* Intake = Cast<AFuelIntake>(Target)) { Crew->ServerFeedCask(Intake); }
+			else if (auto* Control = Cast<AStillControl>(Target); Control && Control->GetControlKind() == EStillControl::Hopper) { Crew->ServerLoadStill(Control); }
+			else { Crew->ServerPutDown(); }
+		}
+		else if (Target->Implements<UInteractable>())
+		{
+			if (IInteractable::Execute_GetInteractHoldSeconds(Target) > 0.f) { Crew->ServerBeginHold(Target); Crew->ServerEndHold(); }
+			else { IInteractable::Execute_Interact(Target, Crew); }
+		}
+		return;
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Press %s rejected: actor not found"), *TargetLabel);
 }
 
 void AAirlockPlayerController::AirlockIncident(FString Type, FName TargetId, float Magnitude)

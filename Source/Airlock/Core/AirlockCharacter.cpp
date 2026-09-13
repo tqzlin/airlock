@@ -21,6 +21,7 @@
 #include "Ship/CargoSlot.h"
 #include "Ship/BypassValve.h"
 #include "Ship/FuelIntake.h"
+#include "Ship/StillControl.h"
 #include "Ship/ShipModule.h"
 #include "EngineUtils.h"
 
@@ -109,6 +110,7 @@ void AAirlockCharacter::Interact(const FInputActionValue& Value)
 	{
 		if (auto* CargoSlot = Cast<ACargoSlot>(Target)) { ServerPlace(CargoSlot); }
 		else if (auto* Intake = Cast<AFuelIntake>(Target)) { ServerFeedCask(Intake); }
+		else if (auto* Control = Cast<AStillControl>(Target); Control && Control->GetControlKind() == EStillControl::Hopper) { ServerLoadStill(Control); }
 		else { ServerPutDown(); }
 		return;
 	}
@@ -147,11 +149,25 @@ void AAirlockCharacter::ServerBeginHold_Implementation(AActor* Target)
 			*Target->GetActorNameOrLabel(), FVector::Distance(GetActorLocation(), Target->GetActorLocation()), InteractReach * 1.25f);
 		return;
 	}
+	const FText Refusal = IInteractable::Execute_GetHoldRefusal(Target);
+	if (!Refusal.IsEmpty())
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Hold %s rejected: %s"), *Target->GetActorNameOrLabel(), *Refusal.ToString());
+		return;
+	}
+	if (IInteractable::Execute_IsRepeatingHold(Target)) { IInteractable::Execute_OnHoldComplete(Target, this); }
 	HoldTarget = Target;
 	ForceNetUpdate();
 	UE_LOG(LogAirlock, Log, TEXT("Hold %s started by %s duration=%.1fs"), *Target->GetActorNameOrLabel(), *GetName(), Seconds);
 }
-void AAirlockCharacter::ServerEndHold_Implementation() { ResetHold(); }
+void AAirlockCharacter::ServerEndHold_Implementation()
+{
+	if (IsValid(HoldTarget) && IInteractable::Execute_IsRepeatingHold(HoldTarget))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Hold %s released by %s"), *HoldTarget->GetActorNameOrLabel(), *GetName());
+	}
+	ResetHold();
+}
 void AAirlockCharacter::ResetHold()
 {
 	HoldTarget = nullptr;
@@ -181,9 +197,14 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 			{
 				AActor* CompletedTarget = HoldTarget;
 				const FString TargetLabel = CompletedTarget->GetActorNameOrLabel();
+				const bool bRepeat = IInteractable::Execute_IsRepeatingHold(CompletedTarget);
 				IInteractable::Execute_OnHoldComplete(CompletedTarget, this);
-				UE_LOG(LogAirlock, Log, TEXT("Hold %s complete by %s"), *TargetLabel, *GetName());
-				ResetHold();
+				if (bRepeat) { HoldElapsed = 0.f; HoldProgress = 0.f; }
+				else
+				{
+					UE_LOG(LogAirlock, Log, TEXT("Hold %s complete by %s"), *TargetLabel, *GetName());
+					ResetHold();
+				}
 			}
 		}
 		// Out of range pauses elapsed time; release explicitly resets it.
@@ -545,4 +566,24 @@ void AAirlockCharacter::ServerFeedCask_Implementation(AFuelIntake* Intake)
 	if (!GM->FuelFeedCask(Id)) { UE_LOG(LogAirlock, Log, TEXT("Feed rejected: model refused")); return; }
 	DetachCarriedCrateAt(Intake->GetActorTransform());
 	UE_LOG(LogAirlock, Log, TEXT("Feed %s by %s"), *Id.ToString(), *GetName());
+}
+
+void AAirlockCharacter::ServerLoadStill_Implementation(AStillControl* Hopper)
+{
+	if (!HasAuthority()) { return; }
+	const TCHAR* Rejection = nullptr;
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	if (bBlackedOut) { Rejection = TEXT("blacked out"); }
+	else if (!IsValid(Hopper) || Hopper->GetWorld() != GetWorld() || Hopper->GetControlKind() != EStillControl::Hopper) { Rejection = TEXT("missing hopper"); }
+	else if (!IsInHoldRange(Hopper)) { Rejection = TEXT("out of range"); }
+	else if (!IsValid(CarriedCrate)) { Rejection = TEXT("hands empty"); }
+	else if (!GM || !GM->RefineryHasFloor()) { Rejection = TEXT("No refinery on this section"); }
+	if (Rejection) { UE_LOG(LogAirlock, Log, TEXT("Load rejected: %s"), Rejection); return; }
+	const FName Cask = CarriedCrate->GetCargoId();
+	const FName Still = Hopper->GetStillId();
+	const FTransform InHand = CarriedCrate->GetActorTransform();
+	if (!GM->RefineryLoadHopper(Still, Cask)) { UE_LOG(LogAirlock, Log, TEXT("Load rejected: model refused")); return; }
+	// PublishCargo normally clears the carrier synchronously; retain the feed verb's safety net for late binding.
+	if (CarriedCrate) { DetachCarriedCrateAt(InHand); }
+	UE_LOG(LogAirlock, Log, TEXT("Load %s into %s by %s"), *Cask.ToString(), *Still.ToString(), *GetName());
 }

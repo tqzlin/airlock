@@ -153,7 +153,8 @@ bool FCheatGateEveryRpcTest::RunTest(const FString& Parameters)
 		PC->ServerKnob(TEXT("Still_1"), TEXT("Heat"), 8, false); ++Calls;
 		PC->ServerStillLoad(TEXT("Still_1"), TEXT("C1")); ++Calls;
 		PC->ServerStillLever(TEXT("Still_1"), TEXT("Reset")); ++Calls;
-		TestEqual(TEXT("Thirty-one helpers"), Calls, 31);
+		PC->ServerPress(TEXT("Still_1_HeatPlus")); ++Calls;
+		TestEqual(TEXT("Thirty-two helpers"), Calls, 32);
 		TestEqual(TEXT("Every call refused"), Log.Count(TEXT("Cheat ")), Calls);
 		TestEqual(TEXT("Every refusal names the switch"), Log.Count(TEXT("refused for")), Calls);
 		TestEqual(TEXT("No status line leaked"), Log.Count(TEXT("Ship ")), 0);

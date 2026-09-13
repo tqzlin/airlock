@@ -33,6 +33,14 @@ public:
 	virtual float GetInteractHoldSeconds_Implementation() const { return 0.f; }
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
+	bool IsRepeatingHold() const;
+	virtual bool IsRepeatingHold_Implementation() const { return false; }
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
+	FText GetHoldRefusal() const;
+	virtual FText GetHoldRefusal_Implementation() const { return FText::GetEmpty(); }
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Airlock|Interaction")
 	void OnHoldComplete(APawn* Pawn);
 	virtual void OnHoldComplete_Implementation(APawn* Pawn) {}
 
