@@ -194,3 +194,25 @@ ship leg is untouched except for the tally and the docking card.
   cask never reaches the still), but a bad cook wastes a good haul; the pay curve above is a first guess.
 - **Sound placeholders** matter more here than anywhere so far (the hiss is the pressure warning); the first pass
   can be engine tones.
+
+## 11. Changes at brief time (2026-09-13, after a second reader simulated the numbers)
+
+Recorded so the note and the M5-1 brief never disagree; the brief wins.
+
+- **Pressure is a valve, not a switch.** The first draft's gain and bleed made the still either pinned at 1 bar or
+  through 3 bar in two seconds, with no warning and no way to run hot at all. Now `dP = 0.002 x (T - 130) x
+  (charge fraction) x (feeding ? 1 : 0.3) - Vent x 0.3 x (P - 1)` per second: about 1.6 bar at the recipe, 2.8 bar
+  at vent 20 %, a pop below vent 15 % after tens of seconds in the red (`WarnBar` 2.5). A hot still can now run
+  at vent 65 % while fuming, which is the coupling section 3 wants.
+- **The bath is a first-order lag** (10 s), so feeding cold crude really pulls it 12 K under the setting at feed
+  50 %. The recipes are therefore heat **40 %** for a heavy cask (184 K bath) and **30 %** for a light one (158 K),
+  and the ideals sit on the knob grid: 183 K heavy, 157 K light. Knobs are integer 5 % steps.
+- **A perfect batch is 85 %; a good one is 75 %.** Trap drift over a 100 s batch costs the difference; the design's
+  own 4,500 cr for twelve casks already assumed 75 %. Drift only runs while crude is being fed.
+- **Fouled is a coke reading, not a state.** A still that fouls mid-batch keeps running at half yield (section 6)
+  instead of stopping; only Failed stops it. A failed still's coils are cut.
+- The gas cut fumes into the room (0.05 ppm per litre of gas), the vent excess scales with how hard the still is
+  boiling, purging keeps the bath warm, the tank gauge climbs continuously (a pop loses only the unfed charge), a
+  cask mid-batch at the horn is lost rather than sold as crude, and the tally's worked example is now exact:
+  12 delivered, 9 refined, 2 unrefined, 1 lost, 6,420 L diesel, 1,100 L tar, 1 critical -> pay 2,980, fuel +54 t.
+- The hopper holds three casks; with the one in the separator a still holds four.
