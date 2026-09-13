@@ -2,8 +2,9 @@
 # powershell -ExecutionPolicy Bypass -File Scripts/verify-fuel.ps1
 # Only the file console drives gameplay. Fresh logs and required captures: Saved/AgentCaptures/M3-6.
 # Slate snapshots omit the PIE HUD; visually review the captures for row/caption visibility.
-# Default follows the brief literally. -ShortFollowup stages 80 units before the leak
-# to exercise the short-reserve branch; at 90 units the +10 s follow-up still has reserve.
+# At 90 units the +10 s follow-up still has reserve ('for now'); the captain's call for crude comes from the
+# fuel itself about 15 s into an open leak ('Reserve's gone'). -ShortFollowup stages 80 units before the leak
+# so the follow-up branch itself says 'dock short'.
 param([switch]$ShortFollowup, [switch]$ProbePositions)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib/mcp.ps1')
@@ -118,7 +119,7 @@ try {
     $leakAt=$script:LastCommandAt
     $null=Wait-FuelProofLine ': SetPiece FuelLeak at ' 5 $leakAt
     $null=Wait-FuelProofLine ': Captain .* (Feed valve.s failed open|Fuel line.s split|The Rig short-filled us)' 5 $leakAt
-    $null=Wait-FuelProofLine ': Captain .*open the crude bypass and feed me casks' 12 $leakAt
+    $null=Wait-FuelProofLine ': Captain .*open the crude bypass and feed me casks' 30 $leakAt
     Move-FuelCrew -1300 280
     Send-FuelCommand 'AirlockLook 0'
     Save-FuelCapture 'feed-leak'

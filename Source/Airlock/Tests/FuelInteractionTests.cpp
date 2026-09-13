@@ -251,6 +251,8 @@ public:
 				const FString Text=Log->Text();
 				const TCHAR* Expected[] = { TEXT("Shut that feed. We're still good"), TEXT("At this burn we dock short."), TEXT("Feed's shut. We're still good") };
 				if (Case<3) { Test->TestTrue(TEXT("Correct follow-up branch"),Text.Contains(Expected[Case])); }
+				// Review addition: the leak left open for ~20 s eats the 150 s reserve, and the captain calls for crude once.
+				Test->TestEqual(TEXT("Reserve call once the margin is gone"),Log->Count(TEXT("Reserve's gone")),Case==0?1:(Case==1?1:0));
 				else { Test->TestFalse(TEXT("Inactive follow-up suppressed"),Text.Contains(TEXT("We're still good")) || Text.Contains(TEXT("At this burn"))); }
 				Test->TestEqual(TEXT("Set piece consumed once even through console"),Log->Count(TEXT("SetPiece FuelLeak at")),1);
 				Test->TestEqual(TEXT("Console reopen logged separately"),Log->Count(TEXT("SetPiece FuelLeak (console)")),1);

@@ -133,7 +133,7 @@ void AAirlockGameMode::BeginPlay()
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
 		SetPieces = FuelHasSystem() ? FVoyageSetPieces::Build(ActiveVoyage) : TArray<FVoyageSetPiece>();
-		NextSetPiece = 0; bFuelFollowupPending = false;
+		NextSetPiece = 0; bFuelFollowupPending = false; bFuelShortSpoken = false;
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
 		if (FuelHasSystem()) { FuelModel.Reset(); PublishFuel(); }
@@ -733,6 +733,12 @@ void AAirlockGameMode::TickFuel()
 	const auto Before = FuelModel.State();
 	if (AirHasAtmosphere() && AtmosphereModel.AddPpm(FuelModel.SootPerSecond() * .25f)) { PublishAtmosphere(); }
 	if (FuelModel.Tick(.25f)) { PublishFuel(); }
+	// The reserve call is tied to the fuel, not to the 10 s follow-up: whenever the ship first goes short, once.
+	if (!bFuelShortSpoken && !bTravelPending && FuelModel.IsShort(GS->GetVoyageSecondsRemaining()))
+	{
+		bFuelShortSpoken = true;
+		SpeakVoyageLine(FText::Format(NSLOCTEXT("Airlock", "FuelReserveGone", "Captain {0} here. Reserve's gone - open the crude bypass and feed me casks, or we dock short."), FText::FromName(ActiveVoyage.Captain)));
+	}
 	if (FuelModel.State().CasksBurned != Before.CasksBurned)
 	{ UE_LOG(LogAirlock, Log, TEXT("Fuel feed %s done: +15"), *Before.BurningCrate.ToString()); }
 	if (!Before.bExhausted && FuelModel.State().bExhausted)

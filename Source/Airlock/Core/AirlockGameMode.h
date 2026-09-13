@@ -121,6 +121,8 @@ private:
 	int32 NextSetPiece = 0;
 	FTimerHandle FuelFollowupTimer;
 	bool bFuelFollowupPending = false;
+	/** The captain calls for crude once per voyage, the first tick the fuel goes short (review decision, M3-6). */
+	bool bFuelShortSpoken = false;
 	void FireDueSetPieces(double Elapsed);
 	void FireSetPiece(const FVoyageSetPiece& Entry, double Elapsed);
 	void FuelFollowup();
