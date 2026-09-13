@@ -108,6 +108,27 @@ void UVoyageSubsystem::SetLastVoyageResult(const FVoyageResult& Result)
 	UE_LOG(LogAirlock, Log, TEXT("Base fuel %d t (+%d this run), runs %d"), Save->BaseFuelTonnes, FMath::Max(0, Result.FuelSurplus), Save->RunsCompleted);
 }
 
+void UVoyageSubsystem::SetShipResult(const FVoyageResult& Result)
+{
+	const UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (World && World->GetNetMode() == NM_Client) { return; }
+	ShipResult = Result;
+	bHasShipResult = true;
+}
+
+bool UVoyageSubsystem::GetShipResult(FVoyageResult& OutResult) const
+{
+	if (!bHasShipResult) { return false; }
+	OutResult = ShipResult;
+	return true;
+}
+
+void UVoyageSubsystem::ClearShipResult()
+{
+	ShipResult = FVoyageResult();
+	bHasShipResult = false;
+}
+
 void UVoyageSubsystem::ReloadSave()
 {
 	Save = nullptr;

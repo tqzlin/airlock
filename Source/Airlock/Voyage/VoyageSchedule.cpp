@@ -20,7 +20,7 @@ TArray<FVoyageAnnouncement> FVoyageSchedule::Build(const FVoyageSpec& Spec)
 	}
 
 	TArray<FVoyageAnnouncement> Entries = {
-		{ 0.f, FText::Format(NSLOCTEXT("Airlock", "CaptainDeparture", "Captain {0} here. We're underway. Sludge casks are loose on the deck - clamp them, or rack them, the rack's cold."), Captain) },
+		{ 0.f, FText::Format(NSLOCTEXT("Airlock", "CaptainDeparture", "Captain {0}, MV Corrin. We're underway. Sludge casks are loose on the deck - clamp them, or rack them, the rack's cold."), Captain) },
 		{ Spec.DurationSeconds * 0.5f, FText::Format(MidVoyage, Captain) },
 		{ FMath::Max(0.f, Spec.DurationSeconds - 60.f), FText::Format(NSLOCTEXT("Airlock", "CaptainOneMinute", "Captain {0} here. One minute to dock. Secure your gear."), Captain) },
 		{ Spec.DurationSeconds, FText::Format(NSLOCTEXT("Airlock", "CaptainDocking", "Captain {0} here. Docking at the refinery. Their crew's coming aboard - then home."), Captain) }

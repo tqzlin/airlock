@@ -51,6 +51,25 @@ const TArray<FStationSignSpec>& StationSigns::Find(FName SectionId)
 		Sign(TEXT("Sign_DockA"), TEXT("VELL EXTRACTOR"), TEXT("DOCK A  -  NO VESSEL DOCKED"), -6760, 1560, 330, 0, 34.f);
 		return Signs;
 	}();
+	// The refinery floor (M5-2): Halder Solar's sign over the airlock, the methane warning over the stills, the
+	// scrubber panel's sign on the south side. Same placeholder heights as the Rig's.
+	static const TArray<FStationSignSpec> Floor = []
+	{
+		TArray<FStationSignSpec> Signs;
+		auto Sign = [&Signs](const TCHAR* Id, const TCHAR* Line1, const TCHAR* Line2, double X, double Y, double Z, double Yaw, float Size)
+		{
+			FStationSignSpec Spec;
+			Spec.Id = Id; Spec.Line1 = Line1; Spec.Line2 = Line2;
+			Spec.Transform = FTransform(FRotator(0, Yaw, 0), FVector(X, Y, Z));
+			Spec.WorldSize = Size;
+			Signs.Add(Spec);
+		};
+		Sign(TEXT("Sign_Floor"), TEXT("HALDER SOLAR"), TEXT("FLOOR 3  -  CRUDE INTAKE"), -6760, 1560, 330, 0, 34.f);
+		Sign(TEXT("Sign_Stills"), TEXT("NO NAKED FLAME"), TEXT("METHANE"), -5400, 1900, 340, -90, 30.f);
+		Sign(TEXT("Sign_Scrubbers"), TEXT("SCRUBBERS"), TEXT(""), -5400, 1150, 300, 90, 30.f);
+		return Signs;
+	}();
 	static const TArray<FStationSignSpec> None;
-	return SectionId == TEXT("StationHub") ? Hub : None;
+	if (SectionId == TEXT("StationHub")) { return Hub; }
+	return SectionId == TEXT("RefineryFloor") ? Floor : None;
 }

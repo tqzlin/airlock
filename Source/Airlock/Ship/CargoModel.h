@@ -62,6 +62,16 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() bool bLateDock = false;
 	/** Preserves pre-fuel summary strings when Tally is called without fuel data. */
 	UPROPERTY() bool bHasFuelData = false;
+	/** The intact casks by id in manifest order, and which of them are light (M5-2): what the refinery floor receives. */
+	UPROPERTY() TArray<FName> IntactCasks;
+	UPROPERTY() TArray<FName> IntactLightCasks;
+	/** The floor leg (M5-2; M5-3 fills these from the refinery model's FFloorResult). */
+	UPROPERTY() bool bHasFloor = false;
+	UPROPERTY() int32 FloorCasksTotal = 0;
+	UPROPERTY() int32 FloorCasksRefined = 0;
+	UPROPERTY() int32 FloorCasksUnrefined = 0;
+	UPROPERTY() int32 FloorDieselL = 0;
+	UPROPERTY() int32 FloorPay = 0;
 	FString Summary() const;
 };
 

@@ -188,7 +188,16 @@ try {
     Send-TwoClientCommand 'server' 'airlock.DevCheats 1'
     Start-Sleep -Seconds 1
 
-    # Dock: the clock runs out for everyone; both instances return to the hub.
+    # Dock: the clock runs out for everyone; both instances land on the refinery floor (M5-2), then the slot's end
+    # takes both home.
+    $dockAt = [DateTime]::UtcNow
+    Send-TwoClientCommand 'server' 'AirlockVoyageClock 5'
+    $null = Wait-TwoClientProofLine ': Ship result:' 60 $dockAt
+    $null = Wait-TwoClientProofLine 'client 1: ready' 60 $dockAt 'UEDPIE_1_RefineryFloor'
+    $null = Wait-TwoClientProofLine ': Slot clock started' 30 $dockAt
+    Start-Sleep -Seconds 3
+    $null = Assert-TwoClientWhere 'server' 'UEDPIE_0_RefineryFloor'
+    $null = Assert-TwoClientWhere 'client' 'UEDPIE_1_RefineryFloor'
     $dockAt = [DateTime]::UtcNow
     Send-TwoClientCommand 'server' 'AirlockVoyageClock 5'
     $result = Wait-TwoClientProofLine ': Voyage result:' 60 $dockAt

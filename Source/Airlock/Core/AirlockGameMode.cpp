@@ -28,6 +28,9 @@
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "Voyage/IncidentDirectorComponent.h"
+#include "Voyage/FloorSchedule.h"
+#include "Ship/RefineryLayouts.h"
+#include "Ship/FloorFixture.h"
 #include "HAL/IConsoleManager.h"
 
 /** The one switch behind every Airlock* console helper (M4-1). On wherever an editor is compiled in (PIE, -game from the editor binary); off in every packaged build until an operator sets it (-ExecCmds="airlock.DevCheats 1" or [ConsoleVariables]). */
@@ -195,6 +198,7 @@ void AAirlockGameMode::BeginPlay()
 	BuildShipGraph();
 	BuildCargo();
 	BuildStationSigns();
+	BuildFloorFixtures();
 	BuildFuel();
 
 	int32 Bound = 0;
@@ -213,7 +217,10 @@ void AAirlockGameMode::BeginPlay()
 	const UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
 	if (GS && GS->CurrentSectionId != HubSectionId && Voyages && Voyages->GetPendingVoyage(ActiveVoyage))
 	{
-		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
+		// The floor runs on the same clock fields with its own length and Okafor's lines (M5-2).
+		const bool bFloor = IsFloorSection();
+		if (bFloor) { ActiveVoyage.DurationSeconds = FFloorSchedule::SlotSeconds; CaptainSchedule = FFloorSchedule::Build(); }
+		else { CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage); }
 		SetPieces = FuelHasSystem() ? FVoyageSetPieces::Build(ActiveVoyage) : TArray<FVoyageSetPiece>();
 		NextSetPiece = 0; bFuelFollowupPending = false; bFuelShortSpoken = false;
 		bStartedVoyageClock = true;
@@ -224,9 +231,17 @@ void AAirlockGameMode::BeginPlay()
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
-		UE_LOG(LogAirlock, Log, TEXT("Voyage clock started: captain=%s duration=%.0fs endServerTime=%.3f"),
-			*ActiveVoyage.Captain.ToString(), ActiveVoyage.DurationSeconds, GS->VoyageEndServerTime);
-		if (const FShipLayout* Layout = ShipLayouts::Find(GS->CurrentSectionId))
+		if (bFloor)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Slot clock started: %.0fs endServerTime=%.3f casks=%d"), ActiveVoyage.DurationSeconds, GS->VoyageEndServerTime, ActiveCargoLayout.Crates.Num());
+		}
+		else
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Voyage clock started: captain=%s duration=%.0fs endServerTime=%.3f"),
+				*ActiveVoyage.Captain.ToString(), ActiveVoyage.DurationSeconds, GS->VoyageEndServerTime);
+		}
+		const FShipLayout* Layout = bFloor ? nullptr : ShipLayouts::Find(GS->CurrentSectionId);
+		if (Layout)
 		{
 			int32 CrewCount = 0;
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -384,7 +399,7 @@ void AAirlockGameMode::TickVoyageClock()
 		// On a jump to docking, consume the leak before the final docking caption.
 		if (CaptainSchedule[NextCaptainEntry].AtSeconds >= ActiveVoyage.DurationSeconds) { FireDueSetPieces(Elapsed); }
 		const FText& Line = CaptainSchedule[NextCaptainEntry++].Line;
-		UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+		UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *SpeakerName(), *Line.ToString());
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			if (AAirlockPlayerController* PC = Cast<AAirlockPlayerController>(It->Get()))
@@ -410,15 +425,88 @@ void AAirlockGameMode::ReturnToHub()
 	{
 		return;
 	}
+	// The ship's clock running out is the refinery dock: the crew lands on the floor (M5-2), not at the Rig.
+	if (IsShipSection())
+	{
+		DockAtFloor();
+		return;
+	}
+	const bool bFloor = IsFloorSection();
 	if (UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
 	{
 		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
-	const FText Subtitle = NSLOCTEXT("Airlock", "TransitionRefinery", "cargo off, fuel on - then home to the Vell Extractor");
-	UE_LOG(LogAirlock, Log, TEXT("Voyage clock expired: travelling to %s (section %s) in %.1fs"),
+	const FText Title = bFloor ? NSLOCTEXT("Airlock", "TransitionUndock", "UNDOCKING - HOME TO THE VELL EXTRACTOR")
+		: NSLOCTEXT("Airlock", "TransitionToHub", "DOCKING - HALDER SOLAR REFINERY");
+	const FText Subtitle = bFloor ? NSLOCTEXT("Airlock", "TransitionUndockSub", "the Rig's board has your pay")
+		: NSLOCTEXT("Airlock", "TransitionRefinery", "cargo off, fuel on - then home to the Vell Extractor");
+	UE_LOG(LogAirlock, Log, TEXT("%s: travelling to %s (section %s) in %.1fs"), bFloor ? TEXT("Slot over") : TEXT("Voyage clock expired"),
 		*HubLevel.GetLongPackageName(), *HubSectionId.ToString(), TravelFadeDelay);
-	TravelToSection(HubLevel, HubSectionId, NSLOCTEXT("Airlock", "TransitionToHub", "DOCKING - HALDER SOLAR REFINERY"), Subtitle);
+	TravelToSection(HubLevel, HubSectionId, Title, Subtitle);
+}
+
+bool AAirlockGameMode::IsShipSection() const
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	return bStartedVoyageClock && GS && GS->CurrentSectionId == ActiveVoyage.ShipClassId;
+}
+
+bool AAirlockGameMode::IsFloorSection() const
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	return GS && GS->CurrentSectionId == RefineryLayouts::FloorSectionId();
+}
+
+FString AAirlockGameMode::SpeakerName() const
+{
+	return IsFloorSection() ? FString(FFloorSchedule::Speaker()) : FString::Printf(TEXT("Captain %s"), *ActiveVoyage.Captain.ToString());
+}
+
+void AAirlockGameMode::DockAtFloor()
+{
+	if (bTravelPending || !GetWorld()) { return; }
+	RecordShipResult();
+	UE_LOG(LogAirlock, Log, TEXT("Docked at the refinery: travelling to %s (section %s) in %.1fs"), *FloorLevel.GetLongPackageName(), *RefineryLayouts::FloorSectionId().ToString(), TravelFadeDelay);
+	TravelToSection(FloorLevel, RefineryLayouts::FloorSectionId(), NSLOCTEXT("Airlock", "TransitionToFloor", "DOCKING - HALDER SOLAR REFINERY"),
+		NSLOCTEXT("Airlock", "TransitionFloorSub", "cargo off - your slot on the floor starts now"));
+}
+
+void AAirlockGameMode::RecordShipResult()
+{
+	if (!HasAuthority() || !bStartedVoyageClock || bRecordedVoyageResult) { return; }
+	if (auto* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
+	{
+		const FVoyageResult Result = CargoTally();
+		Voyages->SetShipResult(Result);
+		bRecordedVoyageResult = true;
+		UE_LOG(LogAirlock, Log, TEXT("Ship result: %s (%d casks to the floor)"), *Result.Summary(), Result.IntactCasks.Num());
+	}
+}
+
+void AAirlockGameMode::BuildFloorFixtures()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS) { return; }
+	const FRefineryLayout* Layout = RefineryLayouts::Find(GS->CurrentSectionId);
+	if (!Layout) { return; }
+	for (const FFloorFixtureSpec& Spec : Layout->Fixtures)
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Fixture = GetWorld()->SpawnActor<AFloorFixture>(AFloorFixture::StaticClass(), Spec.Transform, Params))
+		{
+			Fixture->Initialize(Spec);
+#if WITH_EDITOR
+			Fixture->SetActorLabel(Spec.Id.ToString(), false);
+			Fixture->SetFolderPath(TEXT("Floor"));
+#endif
+			Fixture->FinishSpawning(Spec.Transform);
+		}
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Floor fixtures: %d"), Layout->Fixtures.Num());
 }
 
 void AAirlockGameMode::BuildShipGraph()
@@ -557,9 +645,20 @@ void AAirlockGameMode::BuildCargo()
 	// A booked contract sizes the manifest (M3-7); a ship entered unbooked keeps the four-cask layout.
 	FVoyageSpec Pending;
 	const UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
-	ActiveCargoLayout = (Voyages && Voyages->GetPendingVoyage(Pending))
-		? CargoLayouts::Build(GS->CurrentSectionId, Pending.CaskCount, Pending.VolatileCount)
-		: *CargoLayouts::Find(GS->CurrentSectionId);
+	if (GS->CurrentSectionId == RefineryLayouts::FloorSectionId())
+	{
+		// The floor's casks are the ship leg's intact ones (M5-2); without a ship result the floor is empty.
+		FVoyageResult Ship;
+		const bool bHasShip = Voyages && Voyages->GetShipResult(Ship);
+		ActiveCargoLayout = CargoLayouts::BuildFloor(bHasShip ? Ship.IntactCasks : TArray<FName>(), bHasShip ? Ship.IntactLightCasks : TArray<FName>());
+		if (!bHasShip) { UE_LOG(LogAirlock, Log, TEXT("Floor: no ship result - an empty floor")); }
+	}
+	else
+	{
+		ActiveCargoLayout = (Voyages && Voyages->GetPendingVoyage(Pending))
+			? CargoLayouts::Build(GS->CurrentSectionId, Pending.CaskCount, Pending.VolatileCount)
+			: *CargoLayouts::Find(GS->CurrentSectionId);
+	}
 	const FCargoLayout* Layout = &ActiveCargoLayout;
 	UE_LOG(LogAirlock, Log, TEXT("Cargo manifest: %d casks, %d slots"), Layout->Crates.Num(), Layout->Slots.Num());
 	CargoModel.Build(*Layout);
@@ -666,8 +765,23 @@ void AAirlockGameMode::RecordVoyageResult()
 	if (!HasAuthority() || !bStartedVoyageClock || bRecordedVoyageResult) { return; }
 	if (auto* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr)
 	{
-		const FVoyageResult Result = CargoTally();
+		// The ship leg's tally waits on the subsystem from the refinery dock (M5-2); a ship leaving through its own
+		// airlock never docked, so it tallies here as before.
+		FVoyageResult Result;
+		if (!Voyages->GetShipResult(Result)) { Result = CargoTally(); }
+		if (IsFloorSection())
+		{
+			// M5-2: nothing is refined yet - every delivered cask goes home as crude (M5-3 fills these from FFloorResult).
+			Result.bHasFloor = true;
+			Result.FloorCasksTotal = CargoModel.Crates().Num();
+			Result.FloorCasksRefined = 0;
+			Result.FloorCasksUnrefined = Result.FloorCasksTotal;
+			Result.FloorDieselL = 0;
+			Result.FloorPay = FloorCrudeSaleCr * Result.FloorCasksUnrefined;
+			Result.Pay += Result.FloorPay;
+		}
 		Voyages->SetLastVoyageResult(Result);
+		Voyages->ClearShipResult();
 		bRecordedVoyageResult = true;
 		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s, fuel +%d t"), *Result.Summary(), Result.FuelSurplus);
 	}
@@ -789,7 +903,7 @@ void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
 	if (Counted && *Counted == Crew->BlackoutEndServerTime) { return; }
 	CountedBlackouts.Add(Pawn, Crew->BlackoutEndServerTime);
 	++BlackoutCount;
-	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down - med-bot's on it."), Pawn);
+	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down. Get them to air."), Pawn);
 }
 
 bool AAirlockGameMode::FuelHasSystem() const
@@ -900,7 +1014,7 @@ FString AAirlockGameMode::FuelSummary() const { return FuelHasSystem() ? FuelMod
 
 void AAirlockGameMode::SpeakVoyageLine(const FText& Line)
 {
-	UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+	UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *SpeakerName(), *Line.ToString());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{ if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); } }
 }
