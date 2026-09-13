@@ -11,6 +11,7 @@ class UCameraComponent;
 struct FInputActionValue;
 class UHoldProgressWidget;
 class UCarryPromptWidget;
+class UPromptWidget;
 class UExposureWidget;
 class ACargoCrate;
 class ACargoSlot;
@@ -64,6 +65,10 @@ public:
 	/** Assigns from the cached baseline on authority and clients; safe to apply repeatedly. */
 	UFUNCTION() void OnRep_CarriedCrate();
 	AActor* TraceInteractTarget() const;
+	/** The line under the crosshair (M5-5): what E does to Target now - nothing while a hold runs (the hold widget has
+	 * the prompt), only a slot, the intake or a still's hopper while carrying (E on anything else puts the cask down),
+	 * otherwise the target's own prompt. Pure. */
+	static FText InteractPromptFor(AActor* Target, bool bCarrying, bool bHolding);
 
 	// --- The control-room seat (Ship/ControlStation). Server-authoritative; E toggles, movement stops while seated. ---
 	UFUNCTION(Server, Reliable) void ServerSitAt(AControlStation* Station);
@@ -94,6 +99,9 @@ private:
 	void ResetHold();
 	UPROPERTY(Transient) TObjectPtr<UHoldProgressWidget> HoldWidget;
 	UPROPERTY(Transient) TObjectPtr<UCarryPromptWidget> CarryWidget;
+	UPROPERTY(Transient) TObjectPtr<UPromptWidget> PromptWidget;
+	/** The last prompt shown, so a change logs `Prompt: <text>` once (proofs read it). */
+	FString LastPrompt;
 	UPROPERTY(Transient) TObjectPtr<UExposureWidget> ExposureWidget;
 	FAtmosphereRates ExposureRates;
 	float LastExposureForLog = 0.f;

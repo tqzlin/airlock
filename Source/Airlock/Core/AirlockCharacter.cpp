@@ -15,6 +15,7 @@
 #include "UI/HoldProgressWidget.h"
 #include "UI/CarryPromptWidget.h"
 #include "UI/ExposureWidget.h"
+#include "UI/PromptWidget.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoCrate.h"
@@ -227,6 +228,21 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 			if (CarryWidget) { CarryWidget->AddToViewport(4); }
 		}
 		if (CarryWidget) { CarryWidget->UpdateCarry(CarriedCrate); }
+		if (!PromptWidget)
+		{
+			PromptWidget = CreateWidget<UPromptWidget>(Cast<APlayerController>(GetController()), UPromptWidget::StaticClass());
+			if (PromptWidget) { PromptWidget->AddToViewport(3); }
+		}
+		if (PromptWidget)
+		{
+			const FText PromptNow = InteractPromptFor(TraceInteractTarget(), IsValid(CarriedCrate), IsValid(HoldTarget));
+			PromptWidget->UpdatePrompt(PromptNow);
+			if (PromptNow.ToString() != LastPrompt)
+			{
+				LastPrompt = PromptNow.ToString();
+				UE_LOG(LogAirlock, Log, TEXT("Prompt: %s"), LastPrompt.IsEmpty() ? TEXT("none") : *LastPrompt);
+			}
+		}
 		if (!ExposureWidget)
 		{
 			ExposureWidget = CreateWidget<UExposureWidget>(Cast<APlayerController>(GetController()), UExposureWidget::StaticClass());
@@ -256,6 +272,7 @@ void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 	if (ObservedCargoState.IsValid()) { ObservedCargoState->OnShipGraphChanged.Remove(CargoChangedHandle); }
 	if (CarryWidget) { CarryWidget->RemoveFromParent(); CarryWidget = nullptr; }
 	if (HoldWidget) { HoldWidget->RemoveFromParent(); HoldWidget = nullptr; }
+	if (PromptWidget) { PromptWidget->RemoveFromParent(); PromptWidget = nullptr; }
 	if (ExposureWidget) { ExposureWidget->RemoveFromParent(); ExposureWidget = nullptr; }
 	if (HasAuthority()) { ResetHold(); LeaveSeat(false); }
 	Super::EndPlay(Reason);
@@ -586,4 +603,16 @@ void AAirlockCharacter::ServerLoadStill_Implementation(AStillControl* Hopper)
 	// PublishCargo normally clears the carrier synchronously; retain the feed verb's safety net for late binding.
 	if (CarriedCrate) { DetachCarriedCrateAt(InHand); }
 	UE_LOG(LogAirlock, Log, TEXT("Load %s into %s by %s"), *Cask.ToString(), *Still.ToString(), *GetName());
+}
+
+FText AAirlockCharacter::InteractPromptFor(AActor* Target, bool bCarrying, bool bHolding)
+{
+	if (bHolding || !IsValid(Target) || !Target->Implements<UInteractable>()) { return FText::GetEmpty(); }
+	if (bCarrying)
+	{
+		const auto* Control = Cast<AStillControl>(Target);
+		const bool bTakesACask = Target->IsA<ACargoSlot>() || Target->IsA<AFuelIntake>() || (Control && Control->GetControlKind() == EStillControl::Hopper);
+		if (!bTakesACask) { return FText::GetEmpty(); }
+	}
+	return IInteractable::Execute_GetInteractPrompt(Target);
 }
