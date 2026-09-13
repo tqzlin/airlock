@@ -58,10 +58,11 @@ void ACargoCrate::OnRep_Spec()
 	{
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FallbackScale);
 		HeatLight->SetRelativeLocation(FVector(0, 0, 60));
-		HeatLight->SetAttenuationRadius(180.f);
+		HeatLight->SetAttenuationRadius(120.f);
 		HeatLight->SetLightColor(FLinearColor::Red);
 		HeatLight->SetIntensity(0);
-		VentFX->SetRelativeLocation(FVector(0, 0, 50));
+		VentFX->SetRelativeLocation(FVector(0, 0, 80));
+		VentFX->SetRelativeScale3D(FVector(2.5));
 		if (UParticleSystem* Steam = Cast<UParticleSystem>(SteamTemplate.TryLoad())) { VentFX->SetTemplate(Steam); }
 		else { UE_LOG(LogAirlock, Warning, TEXT("Cargo steam template failed to load: %s"), *SteamTemplate.ToString()); }
 		bVisualsReady = true;
@@ -123,6 +124,7 @@ void ACargoCrate::Refresh()
 	SetActorEnableCollision(!bBurned);
 	const FCargoRates Rates;
 	const float Heat = FMath::Clamp((State->Temperature - Rates.WarnTemperature) / (Rates.VentTemperature - Rates.WarnTemperature), 0.f, 1.f);
+	ShipVisuals::ApplyCargoHeat(Body, !bBurned && State->bVolatile ? Heat : 0.f);
 	HeatLight->SetVisibility(!bBurned && State->bVolatile && State->Temperature >= Rates.WarnTemperature);
 	const bool bShouldPuff = !bBurned && State->State != ECargoState::Vented && CargoState.IsValid() && CargoState->PuffingCrates.Contains(Spec.Id);
 	if (bShouldPuff != bPuffing)

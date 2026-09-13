@@ -47,7 +47,8 @@ void AFuelValve::OnRep_Spec()
 		LeakLight->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-25,0,110)));
 		LeakLight->SetAttenuationRadius(140); LeakLight->SetIntensity(80);
 		LeakLight->SetLightColor(FLinearColor::Red);
-		LeakFX->SetRelativeLocation(FVector(0,0,100));
+		LeakFX->SetRelativeLocation(FVector(0,0,130));
+		LeakFX->SetRelativeScale3D(FVector(2.5));
 		if (auto* Steam = LoadObject<UParticleSystem>(nullptr, TEXT("/Game/ModSciInteriors/Particles/PS_SteamDoor.PS_SteamDoor"))) { LeakFX->SetTemplate(Steam); }
 		bVisualsReady = true;
 	}

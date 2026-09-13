@@ -5,6 +5,12 @@
 #include "Ship/CargoLayouts.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "Ship/ShipLine.h"
+#include "Ship/FuelValve.h"
+#include "Ship/BypassValve.h"
+#include "Ship/FuelIntake.h"
+#include "Ship/ControlStation.h"
+#include "Station/StationSign.h"
 #include "UI/TaskBoardWidget.h"
 #include "Core/AirlockCharacter.h"
 #include "Core/AirlockGameMode.h"
@@ -16,6 +22,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Particles/ParticleSystemComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 namespace
@@ -293,6 +301,56 @@ bool FTaskReadoutTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Air and clock"), UTaskBoardWidget::BuildReadout(&Air, nullptr, 9).ToString(), FString(TEXT("AIR 22 ppm  |  00:09 to dock")));
 	TestEqual(TEXT("Fuel and clock"), UTaskBoardWidget::BuildReadout(nullptr, &Fuel, 60).ToString(), FString(TEXT("FUEL 80%  |  01:00 to dock")));
 	TestTrue(TEXT("Nothing gives empty text"), UTaskBoardWidget::BuildReadout(nullptr, nullptr, -1).IsEmpty());
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLegibilityFixtureTest, "Airlock.Legibility.FixtureLabelsAndHazardVisuals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FLegibilityFixtureTest::RunTest(const FString& Parameters)
+{
+	FLegibilityTestWorld Env;
+	auto* Crate = Env.Find<ACargoCrate>(TEXT("C1"));
+	auto* Line = Env.Find<AShipLine>(TEXT("Coolant_1"));
+	auto* Feed = Env.Find<AFuelValve>(TEXT("FeedValve"));
+	auto* Bypass = Env.Find<ABypassValve>(TEXT("BypassValve"));
+	auto* Intake = Env.Find<AFuelIntake>(TEXT("FuelIntake"));
+	auto* Core = Env.Find<AShipModule>(TEXT("PowerCore"));
+	if (!TestNotNull(TEXT("Crate"), Crate) || !TestNotNull(TEXT("Line"), Line) || !TestNotNull(TEXT("Feed"), Feed)
+		|| !TestNotNull(TEXT("Bypass"), Bypass) || !TestNotNull(TEXT("Intake"), Intake) || !TestNotNull(TEXT("Core"), Core)) { return false; }
+	TestEqual(TEXT("Nonvolatile second line"), Crate->StateLabel->Text.ToString(), FString(TEXT("Loose")));
+	TestEqual(TEXT("Line words on two lines"), Line->Label->Text.ToString(), FString(TEXT("Coolant_1\nNone")));
+	TestEqual(TEXT("Core words on two lines"), Core->Label->Text.ToString(), FString(TEXT("PowerCore\nNominal  100%")));
+	TestEqual(TEXT("Feed words on two lines"), Feed->Label->Text.ToString(), FString(TEXT("FEED VALVE\nshut")));
+	TestEqual(TEXT("Bypass words on two lines"), Bypass->Label->Text.ToString(), FString(TEXT("BYPASS\nclosed")));
+	TestEqual(TEXT("Intake words on two lines"), Intake->Label->Text.ToString(), FString(TEXT("INTAKE\nbypass closed")));
+	Env.State->Fuel.bFeedLeak = true; Env.State->Fuel.bBypassOpen = true;
+	Env.State->Fuel.BurningCrate = TEXT("C3"); Env.State->Fuel.BurnSecondsLeft = 12;
+	Env.State->OnShipGraphChanged.Broadcast();
+	TestEqual(TEXT("Leaking feed"), Feed->Label->Text.ToString(), FString(TEXT("FEED VALVE\nleak")));
+	TestEqual(TEXT("Open bypass"), Bypass->Label->Text.ToString(), FString(TEXT("BYPASS\nOPEN")));
+	TestEqual(TEXT("Burn countdown"), Intake->Label->Text.ToString(), FString(TEXT("INTAKE\nC3 12 s")));
+	Env.State->Fuel.BurningCrate = NAME_None; Env.State->OnShipGraphChanged.Broadcast();
+	TestEqual(TEXT("Ready intake"), Intake->Label->Text.ToString(), FString(TEXT("INTAKE\nready")));
+	TestEqual(TEXT("Crate light stays local"), Crate->HeatLight->AttenuationRadius, 120.f);
+	TestEqual(TEXT("Module light stays local"), Core->StatusLight->AttenuationRadius, 180.f);
+	TestEqual(TEXT("Module light intensity"), Core->StatusLight->Intensity, 150.f);
+	TestEqual(TEXT("Valve light unchanged"), Feed->LeakLight->Intensity, 80.f);
+	TestEqual(TEXT("Valve light radius unchanged"), Feed->LeakLight->AttenuationRadius, 140.f);
+	TestEqual(TEXT("Crate steam raised"), Crate->VentFX->GetRelativeLocation().Z, 80.0);
+	TestEqual(TEXT("Line steam raised"), Line->LeakFX->GetRelativeLocation().Z, 150.0);
+	TestEqual(TEXT("Feed steam raised"), Feed->LeakFX->GetRelativeLocation().Z, 130.0);
+	for (auto* Steam : { Crate->VentFX.Get(), Line->LeakFX.Get(), Feed->LeakFX.Get() })
+	{
+		TestEqual(TEXT("Steam scaled on component"), Steam->GetRelativeScale3D(), FVector(2.5));
+	}
+	for (auto* Text : { Core->Label.Get(), Line->Label.Get(), Crate->Label.Get(), Crate->StateLabel.Get(), Feed->Label.Get(), Bypass->Label.Get(), Intake->Label.Get() })
+	{
+		TestEqual(TEXT("Labels use 22 cm"), Text->WorldSize, 22.f);
+		TestTrue(TEXT("Labels vertically centred"), Text->VerticalAlignment == EVRTA_TextCenter);
+	}
+	for (TActorIterator<ACargoSlot> It(Env.World); It; ++It)
+	{
+		TestEqual(TEXT("Slot id and empty state"), It->Label->Text.ToString(), It->GetSlotId().ToString() + TEXT("\nempty"));
+	}
 	return true;
 }
 #endif

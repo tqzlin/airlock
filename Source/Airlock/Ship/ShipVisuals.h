@@ -12,6 +12,9 @@ namespace ShipVisuals
 AIRLOCK_API void ConfigureLabel(UTextRenderComponent* Label, float WorldSize, float FacingYaw,
 	FLinearColor Colour, FVector RelativeOffset);
 
+/** Optional case emissive. Probes the case material once per process; never edits the source material. */
+AIRLOCK_API void ApplyCargoHeat(UStaticMeshComponent* Body, float Heat);
+
 inline void LoadBody(UStaticMeshComponent* Body, const FSoftObjectPath& Path, const FVector& FallbackScale)
 {
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Path.TryLoad());

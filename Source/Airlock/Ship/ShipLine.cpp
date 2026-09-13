@@ -62,7 +62,8 @@ void AShipLine::OnRep_Spec()
 		ShortLight->SetAttenuationRadius(LightRadius);
 		ShortLight->SetLightColor(ShortColour);
 		ShortLight->SetIntensity(0);
-		LeakFX->SetRelativeLocation(FVector(0, 0, LightHeight));
+		LeakFX->SetRelativeLocation(FVector(0, 0, 150));
+		LeakFX->SetRelativeScale3D(FVector(2.5));
 		if (UParticleSystem* Steam = Cast<UParticleSystem>(SteamTemplate.TryLoad())) { LeakFX->SetTemplate(Steam); }
 		else { UE_LOG(LogAirlock, Warning, TEXT("Ship steam template failed to load: %s"), *SteamTemplate.ToString()); }
 		bVisualsReady = true;

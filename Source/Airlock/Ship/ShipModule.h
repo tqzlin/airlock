@@ -35,12 +35,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FColor LabelColour = FColor::White;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FVector FallbackScale = FVector(1, 1, 1.5);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightHeight = 120.f;
-	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightRadius = 250.f;
+	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightRadius = 180.f;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> StatusLight;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FLinearColor NominalColour = FLinearColor(0.05f, 1.f, 0.15f);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FLinearColor DegradedColour = FLinearColor(1.f, 0.5f, 0.02f);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FLinearColor FailedColour = FLinearColor(1.f, 0.02f, 0.01f);
-	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightIntensity = 300.f;
+	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightIntensity = 150.f;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
