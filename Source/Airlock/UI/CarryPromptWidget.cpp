@@ -35,7 +35,7 @@ void UCarryPromptWidget::UpdateCarry(ACargoCrate* Crate)
 	if (Prompt)
 	{
 		Prompt->SetText(IsValid(Crate) ? FText::Format(NSLOCTEXT("Airlock", "CarryingPrompt",
-			"Carrying {0} - E: put down, or place in a clamp / the cold rack"), FText::FromName(Crate->GetCargoId())) : FText::GetEmpty());
+			"Carrying {0} - E: put down, place in a clamp / the cold rack, or feed to the intake"), FText::FromName(Crate->GetCargoId())) : FText::GetEmpty());
 	}
 	SetVisibility(IsValid(Crate) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }

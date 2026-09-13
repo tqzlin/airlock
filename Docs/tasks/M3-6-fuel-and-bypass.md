@@ -285,3 +285,13 @@ dry does not fail; it coasts and docks late, for less.
 `Scripts\build-editor.bat` clean; `Scripts\run-tests.bat Airlock` all green; all seven existing proofs and
 `verify-fuel.ps1` exit 0; captures show the leaking valve, the open bypass, the intake counting down, the fouled
 row and the hub board's `burned` text.
+
+## Decisions recorded at review (Claude, 2026-09-12)
+- Astra was right that item 10 contradicted items 1 and 5: with `StartFuel` 90 an open leak only makes the run short
+  after about 15 s, so the 10 s follow-up says "for now" and no line ever asked for crude. The reviewer added the
+  missing beat instead of bending the proof: the captain calls `Reserve's gone - open the crude bypass and feed me
+  casks, or we dock short.` once per voyage, the first fuel tick the ship is short (any cause), independent of the
+  follow-up, whose three branches stay as written. The proof waits 30 s for that call; `-ShortFollowup` (80 units
+  before the leak) remains as the way to hear the follow-up's own short branch.
+- `bHasFuelData` on `FVoyageResult` marks a tally made with fuel data so the M3-4/M3-5 summary strings stay exact.
+- `SetVoyageSecondsRemaining` untouched; the set-piece cursor rides the captain timer as the red-team suggested.

@@ -7,6 +7,7 @@
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
+#include "Ship/FuelSystem.h"
 #include "AirlockGameState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
@@ -79,6 +80,9 @@ public:
 	void PublishAtmosphere(const FAtmosphereState& Air, const TArray<FName>& Puffing);
 	UFUNCTION() void OnRep_Atmosphere();
 	bool AirHasAtmosphere() const;
+	UPROPERTY(ReplicatedUsing=OnRep_Fuel) FFuelState Fuel;
+	void PublishFuel(const FFuelState& InFuel);
+	UFUNCTION() void OnRep_Fuel();
 
 	/** Authority-only mirror; unchanged arrays are never rewritten. */
 	void PublishShipGraph(const FShipGraph& Graph);

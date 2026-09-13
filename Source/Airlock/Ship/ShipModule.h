@@ -22,6 +22,8 @@ public:
 	FName GetModuleId() const { return Spec.Id; }
 	EShipModuleType GetModuleType() const { return Spec.Type; }
 	virtual void Interact_Implementation(APawn* Pawn) override;
+	virtual float GetInteractHoldSeconds_Implementation() const override;
+	virtual void OnHoldComplete_Implementation(APawn* Pawn) override;
 	virtual FText GetInteractPrompt_Implementation() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> ShipRoot;

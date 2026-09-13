@@ -19,6 +19,8 @@
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "Ship/BypassValve.h"
+#include "Ship/FuelIntake.h"
 #include "Ship/ShipModule.h"
 #include "EngineUtils.h"
 
@@ -106,6 +108,7 @@ void AAirlockCharacter::Interact(const FInputActionValue& Value)
 	if (CarriedCrate)
 	{
 		if (auto* CargoSlot = Cast<ACargoSlot>(Target)) { ServerPlace(CargoSlot); }
+		else if (auto* Intake = Cast<AFuelIntake>(Target)) { ServerFeedCask(Intake); }
 		else { ServerPutDown(); }
 		return;
 	}
@@ -283,6 +286,7 @@ void AAirlockCharacter::ServerPickUp_Implementation(ACargoCrate* Crate)
 	if (!IsInHoldRange(Crate)) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: out of range")); return; }
 	const auto* State = Crate->GetCargoState();
 	if (!State) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: missing cargo state")); return; }
+	if (State->State == ECargoState::Burned) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: burned")); return; }
 	if (State->State == ECargoState::Vented) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: vented")); return; }
 	if (State->State == ECargoState::Carried) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: already carried")); return; }
 	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
@@ -504,4 +508,38 @@ void AAirlockCharacter::TickCrewExposure(float DeltaSeconds)
 		UE_LOG(LogAirlock, Log, TEXT("Blackout %s"), *GetName());
 		GM->NotifyBlackout(this);
 	}
+}
+
+void AAirlockCharacter::ServerOpenBypass_Implementation(ABypassValve* Valve) { OpenBypassServer(Valve, true); }
+bool AAirlockCharacter::OpenBypassServer(ABypassValve* Valve, bool bRequireReach)
+{
+	if (!HasAuthority()) { return false; }
+	const TCHAR* Rejection = nullptr;
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	if (bBlackedOut) { Rejection = TEXT("blacked out"); }
+	else if (!GM || !GM->FuelHasSystem()) { Rejection = TEXT("No fuel system on this section"); }
+	else if (bRequireReach && (!IsValid(Valve) || Valve->GetWorld() != GetWorld())) { Rejection = TEXT("missing valve"); }
+	else if (bRequireReach && !IsInHoldRange(Valve)) { Rejection = TEXT("out of range"); }
+	else if (!GM->FuelOpenBypass()) { Rejection = TEXT("already open"); }
+	if (Rejection) { UE_LOG(LogAirlock, Log, TEXT("Bypass rejected: %s"), Rejection); return false; }
+	UE_LOG(LogAirlock, Log, TEXT("Bypass opened by %s"), *GetName()); return true;
+}
+void AAirlockCharacter::ServerFeedCask_Implementation(AFuelIntake* Intake)
+{
+	if (!HasAuthority()) { return; }
+	const TCHAR* Rejection = nullptr;
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	if (bBlackedOut) { Rejection = TEXT("blacked out"); }
+	else if (!IsValid(Intake) || Intake->GetWorld() != GetWorld()) { Rejection = TEXT("missing intake"); }
+	else if (!IsInHoldRange(Intake)) { Rejection = TEXT("out of range"); }
+	else if (!IsValid(CarriedCrate)) { Rejection = TEXT("hands empty"); }
+	else if (!GM || !GM->FuelHasSystem() || !GS) { Rejection = TEXT("No fuel system on this section"); }
+	else if (!GS->Fuel.bBypassOpen) { Rejection = TEXT("bypass closed"); }
+	else if (!GS->Fuel.BurningCrate.IsNone()) { Rejection = TEXT("intake busy"); }
+	if (Rejection) { UE_LOG(LogAirlock, Log, TEXT("Feed rejected: %s"), Rejection); return; }
+	const FName Id = CarriedCrate->GetCargoId();
+	if (!GM->FuelFeedCask(Id)) { UE_LOG(LogAirlock, Log, TEXT("Feed rejected: model refused")); return; }
+	DetachCarriedCrateAt(Intake->GetActorTransform());
+	UE_LOG(LogAirlock, Log, TEXT("Feed %s by %s"), *Id.ToString(), *GetName());
 }

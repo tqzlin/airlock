@@ -5,7 +5,7 @@
 #include "CargoModel.generated.h"
 
 UENUM()
-enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented };
+enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented, Burned };
 
 USTRUCT()
 struct AIRLOCK_API FCargoCrateState
@@ -50,6 +50,7 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() int32 CratesIntact = 0;
 	UPROPERTY() int32 CratesVented = 0;
 	UPROPERTY() int32 CratesLoose = 0;
+	UPROPERTY() int32 CratesBurned = 0;
 	UPROPERTY() float ShipCondition = 0.f;
 	UPROPERTY() int32 Pay = 0;
 	UPROPERTY() float DockPpm = -1.f;
@@ -58,11 +59,15 @@ struct AIRLOCK_API FVoyageResult
 	/** Refined methane the refinery credits for the intact casks, and what is left after the trip home (M3-7). */
 	UPROPERTY() int32 FuelCredit = 0;
 	UPROPERTY() int32 FuelSurplus = 0;
+	UPROPERTY() bool bLateDock = false;
+	/** Preserves pre-fuel summary strings when Tally is called without fuel data. */
+	UPROPERTY() bool bHasFuelData = false;
 	FString Summary() const;
 };
 
 struct FCargoLayout;
 struct FAtmosphereState;
+struct FFuelState;
 class FShipGraph;
 
 /** Pure manifest and temperature model. World transforms and carrier identity belong to server actors. */
@@ -73,6 +78,8 @@ public:
 	static constexpr int32 PayPerIntactCrate = 100;
 	static constexpr int32 CleanAirBonus = 150;
 	static constexpr int32 BlackoutDock = 50;
+	static constexpr int32 SootFine = 40;
+	static constexpr int32 LateDockFine = 100;
 	static constexpr int32 CleanManifestBonus = 150;
 	static constexpr float HullBonusPerPoint = 2.f;
 	static constexpr int32 FuelCreditPerIntactCask = 15;
@@ -82,6 +89,7 @@ public:
 	void SetRackCoolFactor(float Factor);
 	bool PickUp(FName CrateId);
 	bool PutDown(FName CrateId);
+	bool Consume(FName CrateId);
 	bool Place(FName CrateId, FName SlotId);
 	bool Release(FName SlotId);
 	bool SetTemperature(FName CrateId, float Temperature);
@@ -91,7 +99,7 @@ public:
 	FString Summary() const;
 	static const TCHAR* StateName(ECargoState State);
 	static FVoyageResult Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec,
-		const FAtmosphereState* Air = nullptr, int32 Blackouts = 0);
+		const FAtmosphereState* Air = nullptr, int32 Blackouts = 0, const FFuelState* Fuel = nullptr);
 private:
 	FCargoRates Rates;
 	float RackCoolFactor = 1.f;

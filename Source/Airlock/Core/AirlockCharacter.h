@@ -14,6 +14,8 @@ class UCarryPromptWidget;
 class UExposureWidget;
 class ACargoCrate;
 class ACargoSlot;
+class ABypassValve;
+class AFuelIntake;
 class AAirlockGameState;
 class AControlStation;
 
@@ -49,6 +51,9 @@ public:
 	bool SetExposureServer(float Percent);
 	UFUNCTION(Server, Reliable) void ServerPickUp(ACargoCrate* Crate);
 	UFUNCTION(Server, Reliable) void ServerPutDown();
+	UFUNCTION(Server, Reliable) void ServerOpenBypass(ABypassValve* Valve);
+	bool OpenBypassServer(ABypassValve* Valve, bool bRequireReach);
+	UFUNCTION(Server, Reliable) void ServerFeedCask(AFuelIntake* Intake);
 	UFUNCTION(Server, Reliable) void ServerPlace(ACargoSlot* CargoSlot);
 	UPROPERTY(ReplicatedUsing=OnRep_CarriedCrate) TObjectPtr<ACargoCrate> CarriedCrate;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> CarrySocket;
