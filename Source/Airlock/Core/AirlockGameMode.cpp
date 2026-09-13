@@ -553,7 +553,10 @@ FName AAirlockGameMode::CargoFirstFilledClamp() const
 	}
 	return NAME_None;
 }
-FVoyageResult AAirlockGameMode::CargoTally() const { return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage); }
+FVoyageResult AAirlockGameMode::CargoTally() const
+{
+	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount);
+}
 FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
 
 void AAirlockGameMode::RecordVoyageResult()

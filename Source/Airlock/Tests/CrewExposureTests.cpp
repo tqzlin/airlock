@@ -17,6 +17,7 @@
 #include "Ship/ShipModule.h"
 #include "Ship/ControlStation.h"
 #include "TimerManager.h"
+#include "UI/VoyageBoardWidget.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -250,6 +251,19 @@ bool FAirHubTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Hub scrub rejected"), Crew->SetScrubModeServer(EScrubMode::Hazard, false));
 	TestTrue(TEXT("Exposure number can be set on hub"), Crew->SetExposureServer(100)); Hub.Activate(); Crew->Tick(1);
 	TestEqual(TEXT("No exposure step on hub"), Crew->Exposure, 100.f); TestFalse(TEXT("Hub never blacks out"), Crew->bBlackedOut);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirResultTextTest, "Airlock.Atmosphere.HubBoardAirResultText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FAirResultTextTest::RunTest(const FString& Parameters)
+{
+	FVoyageResult R; R.CratesIntact = 1; R.CratesTotal = 4; R.ShipCondition = 100; R.Pay = 400;
+	const FString Base = TEXT("Last run: 1/4 crates intact - hull 100% - pay 400 cr");
+	TestEqual(TEXT("No air preserves old text"), UVoyageBoardWidget::DescribeResult(R).ToString(), Base);
+	R.DockPpm = 4; R.bCleanAir = true;
+	TestEqual(TEXT("Clean air suffix"), UVoyageBoardWidget::DescribeResult(R).ToString(), Base + TEXT(" - air clean"));
+	R.DockPpm = 30.9f; R.bCleanAir = false;
+	TestEqual(TEXT("Dirty air suffix floors ppm"), UVoyageBoardWidget::DescribeResult(R).ToString(), Base + TEXT(" - air 30 ppm"));
 	return true;
 }
 #endif

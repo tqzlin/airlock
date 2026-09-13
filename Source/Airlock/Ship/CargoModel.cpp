@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Ship/CargoModel.h"
 #include "Ship/CargoLayouts.h"
+#include "Ship/ShipAtmosphere.h"
 #include "Ship/ShipGraph.h"
 #include "Voyage/IncidentSchedule.h"
 
@@ -158,7 +159,8 @@ FString FCargoModel::Summary() const
 	}
 	return FString::Join(Lines, TEXT("\n"));
 }
-FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec)
+FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec,
+	const FAtmosphereState* Air, int32 Blackouts)
 {
 	FVoyageResult Result;
 	Result.Type = Spec.Type;
@@ -176,10 +178,21 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 	Result.Pay = PayPerIntactCrate * Result.CratesIntact
 		+ (Result.CratesVented == 0 && Result.CratesLoose == 0 ? CleanManifestBonus : 0)
 		+ FMath::RoundToInt(Result.ShipCondition * HullBonusPerPoint);
+	if (Air)
+	{
+		Result.DockPpm = Air->Ppm;
+		Result.Blackouts = FMath::Max(0, Blackouts);
+		Result.bCleanAir = Air->Ppm < FAtmosphereRates().CleanPpm;
+		const int64 Pay = static_cast<int64>(Result.Pay) + (Result.bCleanAir ? CleanAirBonus : 0)
+			- static_cast<int64>(BlackoutDock) * Result.Blackouts;
+		Result.Pay = static_cast<int32>(FMath::Max<int64>(0, Pay));
+	}
 	return Result;
 }
 FString FVoyageResult::Summary() const
 {
-	return FString::Printf(TEXT("%d/%d crates intact, %d vented, %d loose, hull %.2f%%, pay %d"),
+	FString Text = FString::Printf(TEXT("%d/%d crates intact, %d vented, %d loose, hull %.2f%%, pay %d"),
 		CratesIntact, CratesTotal, CratesVented, CratesLoose, ShipCondition, Pay);
+	if (DockPpm >= 0) { Text += FString::Printf(TEXT(", air %d ppm, %d blackouts"), FMath::FloorToInt(DockPpm), Blackouts); }
+	return Text;
 }
