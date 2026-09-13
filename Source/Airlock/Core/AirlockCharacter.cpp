@@ -283,6 +283,7 @@ void AAirlockCharacter::ServerPickUp_Implementation(ACargoCrate* Crate)
 	if (!IsInHoldRange(Crate)) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: out of range")); return; }
 	const auto* State = Crate->GetCargoState();
 	if (!State) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: missing cargo state")); return; }
+	if (State->State == ECargoState::Burned) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: burned")); return; }
 	if (State->State == ECargoState::Vented) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: vented")); return; }
 	if (State->State == ECargoState::Carried) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: already carried")); return; }
 	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();

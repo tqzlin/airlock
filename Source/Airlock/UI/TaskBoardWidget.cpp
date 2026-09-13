@@ -25,7 +25,7 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 	TArray<FCargoCrateState> Heating;
 	for (const auto& Crate : Cargo)
 	{
-		if (Crate.bVolatile && Crate.Temperature >= Warn && Crate.State != ECargoState::Racked && Crate.State != ECargoState::Vented)
+		if (Crate.bVolatile && Crate.Temperature >= Warn && Crate.State != ECargoState::Racked && Crate.State != ECargoState::Vented && Crate.State != ECargoState::Burned)
 		{
 			Heating.Add(Crate);
 		}

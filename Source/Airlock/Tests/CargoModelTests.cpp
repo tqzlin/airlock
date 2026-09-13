@@ -109,6 +109,23 @@ bool FCargoVentTest::RunTest(const FString& Parameters)
 			TestFalse(TEXT("Vented slot still occupied"), M.Place(TEXT("C1"), Slot));
 		}
 	}
+	// The original vent expectations above also apply to the second terminal state.
+	{
+		FCargoModel Burn = CargoTestManifest();
+		TestFalse(TEXT("Consume only carried"), Burn.Consume(TEXT("C2")));
+		Burn.SetTemperature(TEXT("C2"), 45); Burn.PickUp(TEXT("C2"));
+		TestTrue(TEXT("Consume carried cask"), Burn.Consume(TEXT("C2")));
+		const auto BeforeBurn = *Burn.FindCrate(TEXT("C2"));
+		TestTrue(TEXT("Burned state"), BeforeBurn.State == ECargoState::Burned);
+		TestFalse(TEXT("Burned no pickup"), Burn.PickUp(TEXT("C2")));
+		TestFalse(TEXT("Burned no putdown"), Burn.PutDown(TEXT("C2")));
+		TestFalse(TEXT("Burned no place"), Burn.Place(TEXT("C2"), TEXT("Clamp_2")));
+		TestFalse(TEXT("Burned no temperature edit"), Burn.SetTemperature(TEXT("C2"), 0));
+		TestFalse(TEXT("Burned no release"), Burn.Release(BeforeBurn.SlotId));
+		TestFalse(TEXT("Burned no consume"), Burn.Consume(TEXT("C2")));
+		Burn.Tick(1000, 150);
+		TestTrue(TEXT("Burned stays inert"), *Burn.FindCrate(TEXT("C2")) == BeforeBurn);
+	}
 	FCargoModel M = CargoTestManifest();
 	M.SetTemperature(TEXT("C4"), 99); M.Tick(1, 150);
 	TestTrue(TEXT("Heating reaches vent threshold"), M.FindCrate(TEXT("C4"))->State == ECargoState::Vented);

@@ -5,7 +5,7 @@
 #include "CargoModel.generated.h"
 
 UENUM()
-enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented };
+enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented, Burned };
 
 USTRUCT()
 struct AIRLOCK_API FCargoCrateState
@@ -50,6 +50,7 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() int32 CratesIntact = 0;
 	UPROPERTY() int32 CratesVented = 0;
 	UPROPERTY() int32 CratesLoose = 0;
+	UPROPERTY() int32 CratesBurned = 0;
 	UPROPERTY() float ShipCondition = 0.f;
 	UPROPERTY() int32 Pay = 0;
 	UPROPERTY() float DockPpm = -1.f;
@@ -77,6 +78,7 @@ public:
 	void SetRackCoolFactor(float Factor);
 	bool PickUp(FName CrateId);
 	bool PutDown(FName CrateId);
+	bool Consume(FName CrateId);
 	bool Place(FName CrateId, FName SlotId);
 	bool Release(FName SlotId);
 	bool SetTemperature(FName CrateId, float Temperature);

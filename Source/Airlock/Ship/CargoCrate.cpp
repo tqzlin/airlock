@@ -100,10 +100,14 @@ void ACargoCrate::Refresh()
 	FString Text = FString::Printf(TEXT("%s  %s"), *State->Id.ToString(), FCargoModel::StateName(State->State));
 	if (State->bVolatile) { Text += FString::Printf(TEXT("  %dC"), FMath::FloorToInt(State->Temperature)); }
 	Label->SetText(FText::FromString(Text));
+	const bool bBurned = State->State == ECargoState::Burned;
+	SetActorHiddenInGame(bBurned);
+	SetActorEnableCollision(!bBurned);
+	Label->SetVisibility(!bBurned);
 	const FCargoRates Rates;
 	const float Heat = FMath::Clamp((State->Temperature - Rates.WarnTemperature) / (Rates.VentTemperature - Rates.WarnTemperature), 0.f, 1.f);
-	HeatLight->SetVisibility(State->bVolatile && State->Temperature >= Rates.WarnTemperature);
-	const bool bShouldPuff = State->State != ECargoState::Vented && CargoState.IsValid() && CargoState->PuffingCrates.Contains(Spec.Id);
+	HeatLight->SetVisibility(!bBurned && State->bVolatile && State->Temperature >= Rates.WarnTemperature);
+	const bool bShouldPuff = !bBurned && State->State != ECargoState::Vented && CargoState.IsValid() && CargoState->PuffingCrates.Contains(Spec.Id);
 	if (bShouldPuff != bPuffing)
 	{
 		bPuffing = bShouldPuff; bDimPuffLight = false;
@@ -136,7 +140,7 @@ void ACargoCrate::FlickerPuffLight()
 FText ACargoCrate::GetInteractPrompt_Implementation() const
 {
 	const auto* State = GetCargoState();
-	if (!State || State->State == ECargoState::Carried || State->State == ECargoState::Vented) { return FText::GetEmpty(); }
+	if (!State || State->State == ECargoState::Carried || State->State == ECargoState::Vented || State->State == ECargoState::Burned) { return FText::GetEmpty(); }
 	return FText::Format(NSLOCTEXT("Airlock", "CargoPickUp", "Pick up {0}"), FText::FromName(Spec.Id));
 }
 
