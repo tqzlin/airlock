@@ -164,16 +164,16 @@ public:
 		if (Step == 0) { S.World->GetTimerManager().Tick(.1f); S.Mode->SetVoyageSecondsRemaining(600); S.Mode->FuelSet(0); }
 		else if (Step == 1)
 		{
-			S.World->GetTimerManager().Tick(.25f);
+			S.World->GetTimerManager().Tick(.26f);
 			Test->TestTrue(TEXT("Exhaustion latched"),S.State->Fuel.bExhausted);
 			Test->TestEqual(TEXT("Exactly two extra minutes"),S.State->GetVoyageSecondsRemaining(),720.0,1.0);
 			Test->TestEqual(TEXT("Exhaustion itself leaves engines intact"),S.Engines(),100.f);
 			S.Mode->FuelSet(50);
 		}
-		else if (Step == 2) { S.World->GetTimerManager().Tick(.25f); S.Mode->FuelSet(0); }
+		else if (Step == 2) { S.World->GetTimerManager().Tick(.26f); S.Mode->FuelSet(0); }
 		else
 		{
-			S.World->GetTimerManager().Tick(.25f);
+			S.World->GetTimerManager().Tick(.26f);
 			Test->TestEqual(TEXT("Never extends twice"),S.State->GetVoyageSecondsRemaining(),720.0,1.0);
 			Test->TestEqual(TEXT("One exhaustion log"),Log.Count(TEXT("Fuel exhausted:")),1);
 			Test->TestTrue(TEXT("Late result"),S.Mode->CargoTally().bLateDock); return true;
