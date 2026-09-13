@@ -180,7 +180,7 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (HasAuthority()) { BindCarriedCargo(); CheckCarriedCargo(); }
-	if (HasAuthority()) { TickCrewExposure(DeltaSeconds); }
+	if (HasAuthority()) { TickCrewExposure(DeltaSeconds); TickCrewSpill(DeltaSeconds); }
 	if (HasAuthority() && (HoldTarget || HoldElapsed > 0.f))
 	{
 		const float Seconds = IsValid(HoldTarget) && HoldTarget->Implements<UInteractable>()
@@ -264,6 +264,7 @@ void AAirlockCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockCharacter, SeatedStation);
 	DOREPLIFETIME(AAirlockCharacter, bBlackedOut);
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, Exposure, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(AAirlockCharacter, InSpill, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, BlackoutEndServerTime, COND_OwnerOnly);
 }
 void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
@@ -302,7 +303,8 @@ void AAirlockCharacter::ApplyWalkSpeed()
 {
 	CacheCarrySpeed();
 	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed * (IsValid(CarriedCrate) ? CarrySpeedFactor : 1.f)
-		* (Exposure >= ExposureRates.SlowAtExposure ? ExposureRates.SlowFactor : 1.f);
+		* (Exposure >= ExposureRates.SlowAtExposure ? ExposureRates.SlowFactor : 1.f)
+		* (InSpill.IsNone() ? 1.f : FFloorHazardRates().SlowFactor);
 }
 AActor* AAirlockCharacter::TraceInteractTarget() const
 {
@@ -351,6 +353,7 @@ void AAirlockCharacter::DetachCarriedCrateAt(const FTransform& Transform)
 {
 	ACargoCrate* Crate = CarriedCrate;
 	CarriedCrate = nullptr;
+	SpillDwellSeconds = 0.f;
 	if (IsValid(Crate))
 	{
 		Crate->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
@@ -498,6 +501,28 @@ bool AAirlockCharacter::SetScrubModeServer(EScrubMode Mode, bool bRequireReach)
 }
 
 void AAirlockCharacter::OnRep_Exposure() { ApplyWalkSpeed(); }
+void AAirlockCharacter::OnRep_InSpill() { ApplyWalkSpeed(); }
+void AAirlockCharacter::TickCrewSpill(float DeltaSeconds)
+{
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	const FVector Feet = GetActorLocation() - FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const FName Puddle = GM && GM->RefineryHasFloor() && GS && GS->bVoyageActive ? GM->HazardContains(Feet) : NAME_None;
+	if (InSpill != Puddle)
+	{
+		InSpill = Puddle; ApplyWalkSpeed(); ForceNetUpdate();
+	}
+	if (InSpill.IsNone() || !IsValid(CarriedCrate) || bBlackedOut) { SpillDwellSeconds = 0.f; return; }
+	if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.f) { return; }
+	SpillDwellSeconds += DeltaSeconds;
+	if (SpillDwellSeconds >= FFloorHazardRates().StumbleSeconds)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Stumble %s drops %s in %s"), *GetName(), *CarriedCrate->GetCargoId().ToString(), *InSpill.ToString());
+		ServerPutDown();
+		SpillDwellSeconds = 0.f;
+		if (!CarriedCrate) { GM->HazardCountStumble(this); }
+	}
+}
 void AAirlockCharacter::OnRep_BlackedOut() { if (IsLocallyControlled()) { ApplyLocalMovement(); } }
 bool AAirlockCharacter::SetExposureServer(float Percent)
 {

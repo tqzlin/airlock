@@ -6,6 +6,7 @@
 #include "Ship/CargoModel.h"
 #include "Ship/FuelSystem.h"
 #include "Ship/RefineryModel.h"
+#include "Ship/FloorHazards.h"
 #include "TaskBoardWidget.generated.h"
 
 class AAirlockGameState;
@@ -28,7 +29,8 @@ public:
 	/** `Refinery` (M5-3a) switches the board to the floor: still rows, `Load crate` instead of `Cool crate`, no `Secure` rows. */
 	static TArray<FTaskBoardRow> BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
 		const TArray<FCargoCrateState>& Cargo = {}, const FAtmosphereState* Air = nullptr, const FFuelState* Fuel = nullptr,
-		bool bSummaries = false, const FRefineryState* Refinery = nullptr);
+		bool bSummaries = false, const FRefineryState* Refinery = nullptr,
+		const FFloorHazardState* Hazards = nullptr, int32 FloorCriticals = 0);
 	static FText BuildReadout(const FAtmosphereState* Air, const FFuelState* Fuel, int32 SecondsToDock, bool bFloor = false);
 	/** Called by the local controller, including while collapsed; handles late replication and seamless travel. */
 	void UpdateState(AAirlockGameState* State);
@@ -51,6 +53,7 @@ private:
 	TWeakObjectPtr<AAirlockGameState> ObservedState;
 	FDelegateHandle GraphChangedHandle;
 	int32 LastSeconds = INDEX_NONE;
+	int32 LastFloorCriticals = INDEX_NONE;
 	void RefreshRows();
 	void RefreshReadout();
 	void UnbindState();

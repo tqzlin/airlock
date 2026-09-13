@@ -3,12 +3,22 @@
 #include "Core/AirlockGameState.h"
 #include "Ship/ShipVisuals.h"
 #include "Components/TextRenderComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Particles/ParticleSystem.h"
+#include "Particles/ParticleSystemComponent.h"
+#include "TimerManager.h"
 
 AStill::AStill()
 {
 	BathGauge = CreateDefaultSubobject<UTextRenderComponent>(TEXT("BathGauge")); BathGauge->SetupAttachment(FixtureRoot);
 	KnobGauge = CreateDefaultSubobject<UTextRenderComponent>(TEXT("KnobGauge")); KnobGauge->SetupAttachment(FixtureRoot);
 	BatchGauge = CreateDefaultSubobject<UTextRenderComponent>(TEXT("BatchGauge")); BatchGauge->SetupAttachment(FixtureRoot);
+	PopLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("PopLight")); PopLight->SetupAttachment(FixtureRoot);
+	PopLight->SetRelativeLocation(FVector(0, 0, 230)); PopLight->SetLightColor(FLinearColor::White);
+	PopLight->SetIntensityUnits(ELightUnits::Candelas); PopLight->SetIntensity(300.f); PopLight->SetAttenuationRadius(500.f);
+	PopLight->SetCastShadows(false); PopLight->SetVisibility(false);
+	PopFX = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("PopFX")); PopFX->SetupAttachment(FixtureRoot);
+	PopFX->SetRelativeLocation(FVector(0, 0, 230)); PopFX->SetRelativeScale3D(FVector(2.5)); PopFX->bAutoActivate = false;
 }
 
 void AStill::Refresh()
@@ -18,6 +28,18 @@ void AStill::Refresh()
 	if (!bVisualsReady || !GS || !GS->RefineryHasFloor()) { return; }
 	const FStillState* S = GS->Refinery.Stills.FindByPredicate([this](const FStillState& St) { return St.Id == GetFixtureId(); });
 	if (!S) { return; }
+	if (!bPopVisualsReady)
+	{
+		if (auto* Steam = LoadObject<UParticleSystem>(nullptr, TEXT("/Game/ModSciInteriors/Particles/PS_SteamDoor.PS_SteamDoor"))) { PopFX->SetTemplate(Steam); }
+		bPopVisualsReady = true;
+	}
+	// A replicated transition triggers the effect on either side; a first Popped snapshot is only a baseline.
+	if (bHasLastStatus && LastStatus == EStillStatus::Running && S->Status == EStillStatus::Popped)
+	{
+		PopLight->SetVisibility(true); PopFX->Activate(true);
+		GetWorldTimerManager().SetTimer(PopTimer, this, &AStill::EndPopBurst, .5f, false);
+	}
+	LastStatus = S->Status; bHasLastStatus = true;
 	const FRefineryRates Rates;
 	ShipVisuals::ConfigureLabel(BathGauge, 18.f, GetSpec().LabelYaw,
 		S->PressureBar >= Rates.WarnBar ? FLinearColor::Red : FLinearColor::White, FVector(0, -125, 215));
@@ -34,4 +56,10 @@ void AStill::Refresh()
 	}
 	else { Batch = S->Status == EStillStatus::Idle ? TEXT("idle") : FString(RefineryLayouts::StatusName(S->Status)).ToUpper(); }
 	BatchGauge->SetText(FText::FromString(FString::Printf(TEXT("%s   cal %d%%"), *Batch, FMath::FloorToInt(S->Calibration * 100.f))));
+}
+
+void AStill::EndPopBurst() { PopLight->SetVisibility(false); PopFX->Deactivate(); }
+void AStill::EndPlay(const EEndPlayReason::Type Reason)
+{
+	GetWorldTimerManager().ClearTimer(PopTimer); Super::EndPlay(Reason);
 }

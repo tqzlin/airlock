@@ -33,6 +33,7 @@ const FRefineryLayout* RefineryLayouts::Find(FName SectionId)
 			Spec.Mesh = FSoftObjectPath(Mesh);
 			Spec.LabelYaw = LabelYaw; Spec.LabelHeight = LabelHeight;
 			Spec.Line1 = Line1; Spec.Line2 = Line2;
+			if (Kind == EFloorFixtureKind::Still) { Spec.SpillOffset = FVector(0, -230, 0); }
 			Layout.Fixtures.Add(Spec);
 		};
 		// Three stills in a row along the north side, three metres apart, labels facing the walkway (-Y).
@@ -53,6 +54,11 @@ int32 RefineryLayouts::StillCount(const FRefineryLayout& Layout)
 	int32 Count = 0;
 	for (const FFloorFixtureSpec& Spec : Layout.Fixtures) { Count += Spec.Kind == EFloorFixtureKind::Still; }
 	return Count;
+}
+
+FVector RefineryLayouts::SpillPoint(const FFloorFixtureSpec& Spec)
+{
+	return Spec.Transform.GetLocation() + Spec.Transform.GetRotation().RotateVector(Spec.SpillOffset);
 }
 
 const TCHAR* RefineryLayouts::KnobName(ERefineryKnob Knob)

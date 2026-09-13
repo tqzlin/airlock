@@ -138,4 +138,35 @@ bool FFuelTaskRowsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Cap still eight plus overflow"), Rows.Num(), 9); TestEqual(TEXT("Overflow count"), Rows.Last().Text.ToString(), FString(TEXT("+5 more")));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFloorHazardTaskRowsTest, "Airlock.Floor.HazardInteraction.TaskBoardMedicalStillSpillPriorityAndOverflow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FFloorHazardTaskRowsTest::RunTest(const FString& Parameters)
+{
+	FRefineryState Refinery;
+	FStillState Still; Still.Id = TEXT("Still_1"); Still.Status = EStillStatus::Popped; Refinery.Stills.Add(Still);
+	FFloorHazardState Hazards;
+	FFloorSpillState Spill; Spill.Id = TEXT("S1"); Spill.StillId = TEXT("Still_2"); Spill.Litres = 200; Hazards.Spills.Add(Spill);
+	FAtmosphereState Air; Air.Ppm = 55;
+	FFuelState Fuel; Fuel.bFeedLeak = true;
+	auto Rows = UTaskBoardWidget::BuildRows({}, {}, {}, &Air, &Fuel, false, &Refinery, &Hazards, 1);
+	if (!TestEqual(TEXT("Five priority rows"), Rows.Num(), 5)) { return false; }
+	TestEqual(TEXT("Medical total first"), Rows[0].Text.ToString(), FString(TEXT("1 critical - 200 cr medical")));
+	TestTrue(TEXT("Medical red"), Rows[0].bFailed);
+	TestEqual(TEXT("Urgent still next"), Rows[1].Text.ToString(), FString(TEXT("Still_1 popped - reset the trap")));
+	TestEqual(TEXT("Spill before fuel and air"), Rows[2].Text.ToString(), FString(TEXT("Spill by Still_2 - squeegee")));
+	TestFalse(TEXT("Spill white"), Rows[2].bFailed);
+	TestTrue(TEXT("Fuel follows spills"), Rows[3].Text.ToString().StartsWith(TEXT("Fuel leak")));
+	TestTrue(TEXT("Air follows fuel"), Rows[4].Text.ToString().StartsWith(TEXT("Hold air 55")));
+	Hazards.Spills.Reset(); Refinery.Stills.Reset();
+	Rows = UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, nullptr, false, &Refinery, &Hazards, 2);
+	TestEqual(TEXT("Clean floor retains medical total"), Rows[0].Text.ToString(), FString(TEXT("2 critical - 400 cr medical")));
+	TestEqual(TEXT("No medical debt is nominal"), UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, nullptr, false, &Refinery, &Hazards)[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	for (int32 I = 1; I <= 10; ++I) { Spill.Id = FName(*FString::Printf(TEXT("S%d"), I)); Hazards.Spills.Add(Spill); }
+	Rows = UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, nullptr, false, &Refinery, &Hazards, 1);
+	TestEqual(TEXT("Eight rows plus overflow"), Rows.Num(), 9);
+	TestEqual(TEXT("Medical priority survives overflow"), Rows[0].Text.ToString(), FString(TEXT("1 critical - 200 cr medical")));
+	TestEqual(TEXT("Each puddle counted"), Rows.Last().Text.ToString(), FString(TEXT("+3 more")));
+	return true;
+}
 #endif

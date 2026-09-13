@@ -47,6 +47,8 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_BlackedOut) bool bBlackedOut = false;
 	UPROPERTY(Replicated) double BlackoutEndServerTime = 0.0;
 	UFUNCTION() void OnRep_Exposure();
+	UPROPERTY(ReplicatedUsing=OnRep_InSpill) FName InSpill;
+	UFUNCTION() void OnRep_InSpill();
 	UFUNCTION() void OnRep_BlackedOut();
 	void ApplyWalkSpeed();
 	void ApplyLocalMovement();
@@ -107,6 +109,8 @@ private:
 	float LastExposureForLog = 0.f;
 	double LastCoughTime = -5.0;
 	void TickCrewExposure(float DeltaSeconds);
+	void TickCrewSpill(float DeltaSeconds);
+	float SpillDwellSeconds = 0.f;
 	float BaseWalkSpeed = 0.f;
 	bool bCarrySpeedCached = false;
 	void CacheCarrySpeed();
