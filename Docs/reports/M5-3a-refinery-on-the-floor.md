@@ -144,3 +144,11 @@ Scripts\close-editor.ps1 ; Scripts\build-editor.bat ; Scripts\run-tests.bat Airl
 Scripts\run-editor.bat  (port 8000, or AIRLOCK_MCP_PORT=8001 on the worktree)
 powershell -ExecutionPolicy Bypass -File Scripts\verify-floor.ps1
 ```
+
+## Merged tree (Claude, 2026-09-13 late morning)
+
+Merged `--no-ff` into `main` at 244c6eb (after the M5-1 / M5-2 docs commit). On `Airlock\` with port 8000: the build
+clean, **138 / 138** tests, and the twelve proofs green in one batch with the play settings forced single-player
+(loop 53 s, ship-graph 72, incidents 58, voyage-clock 117, level-pass 149, cargo 88, atmosphere 125, fuel 146,
+refinery 67, legibility 69, two-clients 75, floor 198 with the refined cask). M5-3b's brief and Astra's launch
+script (179) follow this merge.
