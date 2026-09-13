@@ -17,6 +17,7 @@ bool FCargoSlotState::operator==(const FCargoSlotState& Other) const
 
 void FCargoModel::Build(const FCargoLayout& Layout)
 {
+	RackCoolFactor = 1.f;
 	CrateStates.Reset();
 	SlotStates.Reset();
 	for (const auto& Spec : Layout.Crates)
@@ -47,7 +48,7 @@ bool FCargoModel::Tick(float DeltaSeconds, double VoyageElapsedSeconds)
 		if (Crate.Temperature < Rates.VentTemperature)
 		{
 			float Rate = 0.f;
-			if (Crate.State == ECargoState::Racked) { Rate = -Rates.RackCool; }
+			if (Crate.State == ECargoState::Racked) { Rate = -Rates.RackCool * RackCoolFactor; }
 			else if (Crate.bVolatile && VoyageElapsedSeconds >= FIncidentSchedule::CalmSeconds)
 			{
 				if (Crate.State == ECargoState::Loose) { Rate = Rates.LooseHeat; }
@@ -63,6 +64,11 @@ bool FCargoModel::Tick(float DeltaSeconds, double VoyageElapsedSeconds)
 		bChanged |= Before != FMath::FloorToInt(Crate.Temperature);
 	}
 	return bChanged;
+}
+
+void FCargoModel::SetRackCoolFactor(float Factor)
+{
+	if (FMath::IsFinite(Factor)) { RackCoolFactor = FMath::Clamp(Factor, 0.f, 1.f); }
 }
 
 FCargoCrateState* FCargoModel::MutableCrate(FName Id)

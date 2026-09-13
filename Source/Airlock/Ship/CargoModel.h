@@ -56,6 +56,7 @@ struct AIRLOCK_API FVoyageResult
 };
 
 struct FCargoLayout;
+struct FAtmosphereState;
 class FShipGraph;
 
 /** Pure manifest and temperature model. World transforms and carrier identity belong to server actors. */
@@ -68,6 +69,7 @@ public:
 	static constexpr float HullBonusPerPoint = 2.f;
 	void Build(const FCargoLayout& Layout);
 	bool Tick(float DeltaSeconds, double VoyageElapsedSeconds);
+	void SetRackCoolFactor(float Factor);
 	bool PickUp(FName CrateId);
 	bool PutDown(FName CrateId);
 	bool Place(FName CrateId, FName SlotId);
@@ -81,6 +83,7 @@ public:
 	static FVoyageResult Tally(const FCargoModel& Cargo, const FShipGraph& Ship, const FVoyageSpec& Spec);
 private:
 	FCargoRates Rates;
+	float RackCoolFactor = 1.f;
 	TArray<FCargoCrateState> CrateStates;
 	TArray<FCargoSlotState> SlotStates;
 	FCargoCrateState* MutableCrate(FName Id);

@@ -183,4 +183,23 @@ bool FCargoTallyTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Hull is unrounded mean"), FMath::IsNearlyEqual(FCargoModel::Tally(M, Ship, Spec).ShipCondition, 699.f / 7.f));
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoRackFactorTest, "Airlock.Cargo.RackCoolFactorClampsAndResets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoRackFactorTest::RunTest(const FString& Parameters)
+{
+	FCargoModel M = CargoTestManifest();
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("ColdRack")); M.SetTemperature(TEXT("C2"), 80);
+	M.SetRackCoolFactor(.5f); M.Tick(1, 0);
+	TestEqual(TEXT("Half power cools 2 degrees per second"), M.FindCrate(TEXT("C2"))->Temperature, 78.f);
+	M.SetRackCoolFactor(-1); M.Tick(1, 0);
+	TestEqual(TEXT("Lower clamp stops cooling"), M.FindCrate(TEXT("C2"))->Temperature, 78.f);
+	M.SetRackCoolFactor(2); M.Tick(1, 0);
+	TestEqual(TEXT("Upper clamp full cooling"), M.FindCrate(TEXT("C2"))->Temperature, 74.f);
+	M.SetRackCoolFactor(std::numeric_limits<float>::quiet_NaN()); M.Tick(1, 0);
+	TestEqual(TEXT("Invalid factor ignored"), M.FindCrate(TEXT("C2"))->Temperature, 70.f);
+	M.SetRackCoolFactor(0); M.Build(*CargoLayouts::Find(TEXT("Hauler_Mk1")));
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("ColdRack")); M.SetTemperature(TEXT("C2"), 80); M.Tick(1, 0);
+	TestEqual(TEXT("Build restores full cooling"), M.FindCrate(TEXT("C2"))->Temperature, 76.f);
+	return true;
+}
 #endif

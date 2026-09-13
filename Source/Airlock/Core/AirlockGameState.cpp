@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 
 #include "Core/AirlockGameState.h"
+#include "Ship/CargoLayouts.h"
 #include "Net/UnrealNetwork.h"
 
 AAirlockGameState::AAirlockGameState()
@@ -31,6 +32,8 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, ShipModules);
 	DOREPLIFETIME(AAirlockGameState, ShipLines);
 	DOREPLIFETIME(AAirlockGameState, Cargo);
+	DOREPLIFETIME(AAirlockGameState, Atmosphere);
+	DOREPLIFETIME(AAirlockGameState, PuffingCrates);
 	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
 	DOREPLIFETIME(AAirlockGameState, bHasLastVoyageResult);
 }
@@ -61,3 +64,18 @@ void AAirlockGameState::PublishCargo(const TArray<FCargoCrateState>& InCargo)
 }
 
 void AAirlockGameState::OnRep_Cargo() { OnShipGraphChanged.Broadcast(); }
+
+bool AAirlockGameState::AirHasAtmosphere() const { return CargoLayouts::Find(CurrentSectionId) != nullptr; }
+
+void AAirlockGameState::PublishAtmosphere(const FAtmosphereState& Air, const TArray<FName>& Puffing)
+{
+	if (!HasAuthority()) { return; }
+	const bool bAirChanged = !(Atmosphere == Air);
+	const bool bPuffsChanged = PuffingCrates != Puffing;
+	if (!bAirChanged && !bPuffsChanged) { return; }
+	if (bAirChanged) { Atmosphere = Air; }
+	if (bPuffsChanged) { PuffingCrates = Puffing; }
+	ForceNetUpdate();
+	OnRep_Atmosphere();
+}
+void AAirlockGameState::OnRep_Atmosphere() { OnShipGraphChanged.Broadcast(); }

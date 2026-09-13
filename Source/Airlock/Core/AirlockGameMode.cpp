@@ -128,6 +128,7 @@ void AAirlockGameMode::BeginPlay()
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
 		bStartedVoyageClock = true;
+		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -398,7 +399,13 @@ void AAirlockGameMode::TickShipGraph()
 	if (!HasAuthority() || !GS || !GS->bVoyageActive) { return; }
 	ShipGraph.Tick(0.25f);
 	PublishShipGraph();
+	const bool bAirFlagsChanged = UpdateAtmosphereFlags();
 	if (CargoModel.Tick(0.25f, ActiveVoyage.DurationSeconds - GS->GetVoyageSecondsRemaining())) { PublishCargo(); }
+	if (AirHasAtmosphere())
+	{
+		const bool bAirChanged = AtmosphereModel.Tick(0.25f, CargoModel.Crates());
+		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
+	}
 }
 
 void AAirlockGameMode::PublishShipGraph()
@@ -422,6 +429,7 @@ void AAirlockGameMode::PublishShipGraph()
 		}
 	}
 	GS->PublishShipGraph(ShipGraph);
+	if (UpdateAtmosphereFlags()) { PublishAtmosphere(); }
 }
 
 bool AAirlockGameMode::ShipSetLineFault(FName Id, EShipLineFault Fault)
@@ -451,6 +459,8 @@ void AAirlockGameMode::BuildCargo()
 	const FCargoLayout* Layout = GS ? CargoLayouts::Find(GS->CurrentSectionId) : nullptr;
 	if (!HasAuthority() || !Layout) { return; }
 	CargoModel.Build(*Layout);
+	AtmosphereModel.Reset();
+	PublishAtmosphere();
 	PublishCargo();
 	for (const auto& Spec : Layout->Slots)
 	{
@@ -555,3 +565,59 @@ void AAirlockGameMode::RecordVoyageResult()
 		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s"), *Result.Summary());
 	}
 }
+
+bool AAirlockGameMode::AirHasAtmosphere() const
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	return GS && GS->AirHasAtmosphere();
+}
+bool AAirlockGameMode::UpdateAtmosphereFlags()
+{
+	if (!HasAuthority() || !AirHasAtmosphere()) { return false; }
+	const auto Status = [this](FName Id)
+	{
+		const auto* M = ShipGraph.Modules().FindByPredicate([Id](const auto& Module) { return Module.Id == Id; });
+		return M ? M->Status : EShipModuleStatus::Nominal;
+	};
+	const auto Core = Status(TEXT("PowerCore"));
+	const auto Life = Status(TEXT("LifeSupport"));
+	bool bChanged = AtmosphereModel.SetScrubDisabled(Life == EShipModuleStatus::Failed);
+	bChanged |= AtmosphereModel.SetBrownout(Core != EShipModuleStatus::Nominal || Life == EShipModuleStatus::Degraded);
+	CargoModel.SetRackCoolFactor((Status(TEXT("CoolantLoop")) == EShipModuleStatus::Nominal ? 1.f : .5f)
+		* (AirGetScrubMode() == EScrubMode::Hazard && Core != EShipModuleStatus::Nominal ? .5f : 1.f));
+	return bChanged;
+}
+void AAirlockGameMode::PublishAtmosphere()
+{
+	auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !AirHasAtmosphere()) { return; }
+	FAtmosphereState Mirror = AtmosphereModel.State();
+	Mirror.Ppm = FMath::FloorToFloat(Mirror.Ppm);
+	const FAtmosphereState Old = GS->Atmosphere;
+	const FAtmosphereRates R;
+	bool bLog = Old.ScrubMode != Mirror.ScrubMode || Old.bBrownout != Mirror.bBrownout || Old.bScrubDisabled != Mirror.bScrubDisabled;
+	for (const float Threshold : { R.CleanPpm, R.WarnPpm, R.DangerPpm })
+	{
+		bLog |= (Old.Ppm >= Threshold) != (Mirror.Ppm >= Threshold);
+	}
+	GS->PublishAtmosphere(Mirror, AtmosphereModel.PuffingCrates());
+	if (bLog)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Air %d ppm scrub=%s%s%s"), FMath::FloorToInt(Mirror.Ppm), FShipAtmosphere::ModeName(Mirror.ScrubMode),
+			Mirror.bBrownout ? TEXT(" brownout") : TEXT(""), Mirror.bScrubDisabled ? TEXT(" disabled") : TEXT(""));
+	}
+}
+bool AAirlockGameMode::AirSetScrubMode(EScrubMode Mode)
+{
+	if (!HasAuthority() || !AirHasAtmosphere()) { return false; }
+	if (Mode != EScrubMode::Off && Mode != EScrubMode::Normal && Mode != EScrubMode::Hazard) { return false; }
+	if (AtmosphereModel.SetScrubMode(Mode)) { UpdateAtmosphereFlags(); PublishAtmosphere(); }
+	return true;
+}
+bool AAirlockGameMode::AirSetPpm(float Ppm)
+{
+	if (!HasAuthority() || !AirHasAtmosphere() || !AtmosphereModel.SetPpm(Ppm)) { return false; }
+	PublishAtmosphere(); return true;
+}
+EScrubMode AAirlockGameMode::AirGetScrubMode() const { return AtmosphereModel.State().ScrubMode; }
+FString AAirlockGameMode::AirSummary() const { return AirHasAtmosphere() ? AtmosphereModel.Summary() : TEXT("No atmosphere on this section"); }

@@ -7,6 +7,7 @@
 #include "Voyage/VoyageSchedule.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
+#include "Ship/ShipAtmosphere.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -50,6 +51,11 @@ public:
 	FVoyageResult CargoTally() const;
 	FString CargoSummary() const;
 	void RecordVoyageResult();
+	bool AirHasAtmosphere() const;
+	bool AirSetScrubMode(EScrubMode Mode);
+	bool AirSetPpm(float Ppm);
+	EScrubMode AirGetScrubMode() const;
+	FString AirSummary() const;
 	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
 protected:
@@ -70,6 +76,9 @@ private:
 
 	FShipGraph ShipGraph;
 	FCargoModel CargoModel;
+	FShipAtmosphere AtmosphereModel;
+	bool UpdateAtmosphereFlags();
+	void PublishAtmosphere();
 	void BuildCargo();
 	void PublishCargo();
 	FTimerHandle ShipGraphTimer;
