@@ -2,6 +2,7 @@
 #include "Ship/Spill.h"
 #include "Ship/ShipVisuals.h"
 #include "Core/AirlockGameState.h"
+#include "Core/AirlockGameMode.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -97,3 +98,18 @@ void ASpill::OnSteamFinished(UParticleSystemComponent* Finished)
 	if (bPuddlePresent) { SteamRestartTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ASpill::RestartSteam); }
 }
 void ASpill::RestartSteam() { if (bPuddlePresent) { SteamFX->Activate(true); } }
+
+FText ASpill::GetInteractPrompt_Implementation() const
+{
+	return GetSpillState() ? NSLOCTEXT("Airlock", "SqueegeeSpill", "Squeegee the spill (hold E)") : FText::GetEmpty();
+}
+float ASpill::GetInteractHoldSeconds_Implementation() const
+{
+	return GetSpillState() ? FFloorHazardRates().SqueegeeSeconds : 0.f;
+}
+void ASpill::Interact_Implementation(APawn* Pawn) {}
+void ASpill::OnHoldComplete_Implementation(APawn* Pawn)
+{
+	if (!HasAuthority() || !IsValid(Pawn) || Pawn->GetWorld() != GetWorld()) { return; }
+	if (auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>()) { GM->HazardSqueegee(Id, Pawn); }
+}

@@ -2,6 +2,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Core/Interactable.h"
 #include "Ship/FloorHazards.h"
 #include "Spill.generated.h"
 class UBoxComponent;
@@ -12,7 +13,7 @@ class AAirlockGameState;
 
 /** A puddle's body; all litres, radius and location come from the replicated floor mirror. */
 UCLASS()
-class AIRLOCK_API ASpill : public AActor
+class AIRLOCK_API ASpill : public AActor, public IInteractable
 {
 	GENERATED_BODY()
 public:
@@ -20,6 +21,10 @@ public:
 	void Initialize(FName InId);
 	FName GetSpillId() const { return Id; }
 	const FFloorSpillState* GetSpillState() const;
+	virtual FText GetInteractPrompt_Implementation() const override;
+	virtual float GetInteractHoldSeconds_Implementation() const override;
+	virtual void Interact_Implementation(APawn* Pawn) override;
+	virtual void OnHoldComplete_Implementation(APawn* Pawn) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> SpillRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
