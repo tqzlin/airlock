@@ -5,9 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Voyage/VoyageSchedule.h"
+#include "Voyage/VoyageSetPieces.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
+#include "Ship/FuelSystem.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -51,6 +53,15 @@ public:
 	FVoyageResult CargoTally() const;
 	FString CargoSummary() const;
 	void RecordVoyageResult();
+	bool FuelHasSystem() const;
+	bool FuelOpenLeak();
+	bool FuelCloseLeak();
+	bool FuelOpenBypass();
+	bool FuelFeedCask(FName Id);
+	bool FuelClearInjectors();
+	bool FuelSet(float Units);
+	FString FuelSummary() const;
+	void FuelLeakConsole();
 	bool AirHasAtmosphere() const;
 	bool AirSetScrubMode(EScrubMode Mode);
 	bool AirSetPpm(float Ppm);
@@ -79,6 +90,10 @@ private:
 	FShipGraph ShipGraph;
 	FCargoModel CargoModel;
 	FShipAtmosphere AtmosphereModel;
+	FFuelSystem FuelModel;
+	void BuildFuel();
+	void TickFuel();
+	void PublishFuel();
 	bool UpdateAtmosphereFlags();
 	void PublishAtmosphere();
 	TMap<FName, double> AirCaptainLastSpoken;
@@ -102,6 +117,16 @@ private:
 	bool bRecordedVoyageResult = false;
 	TArray<FVoyageAnnouncement> CaptainSchedule;
 	int32 NextCaptainEntry = 0;
+	TArray<FVoyageSetPiece> SetPieces;
+	int32 NextSetPiece = 0;
+	FTimerHandle FuelFollowupTimer;
+	bool bFuelFollowupPending = false;
+	/** The captain calls for crude once per voyage, the first tick the fuel goes short (review decision, M3-6). */
+	bool bFuelShortSpoken = false;
+	void FireDueSetPieces(double Elapsed);
+	void FireSetPiece(const FVoyageSetPiece& Entry, double Elapsed);
+	void FuelFollowup();
+	void SpeakVoyageLine(const FText& Line);
 	FTimerHandle VoyageTimer;
 	TSoftObjectPtr<UWorld> HubLevel = TSoftObjectPtr<UWorld>(FSoftObjectPath(TEXT("/Game/Maps/StationHub.StationHub")));
 

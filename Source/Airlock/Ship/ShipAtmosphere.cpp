@@ -60,7 +60,7 @@ bool FShipAtmosphere::Tick(float DeltaSeconds, const TArray<FCargoCrateState>& C
 			Clock = FMath::Min(Clock + DeltaSeconds, static_cast<double>(Rates.RuptureSeconds));
 			if (Seconds > 0) { Puffing.Add(Crate.Id); }
 		}
-		else if (Crate.bVolatile && Crate.Temperature >= FCargoRates().WarnTemperature && Crate.State != ECargoState::Racked)
+		else if (Crate.State != ECargoState::Burned && Crate.bVolatile && Crate.Temperature >= FCargoRates().WarnTemperature && Crate.State != ECargoState::Racked)
 		{
 			double& Clock = PuffClocks.FindOrAdd(Crate.Id);
 			// Integrate the on portions exactly, including ticks spanning several periods.

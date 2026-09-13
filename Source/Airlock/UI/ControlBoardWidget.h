@@ -48,6 +48,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TitleText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ClockText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> AirText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> FuelText;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> Rows;
 	TWeakObjectPtr<AAirlockGameState> ObservedState;
 	TWeakObjectPtr<AControlStation> ObservedStation;

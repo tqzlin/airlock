@@ -26,6 +26,7 @@
 #include "InputModifiers.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "Ship/FuelIntake.h"
 
 AAirlockPlayerController::AAirlockPlayerController()
 {
@@ -558,4 +559,45 @@ void AAirlockPlayerController::ServerExpose_Implementation(float Percent)
 	const bool bOk = Crew && Crew->SetExposureServer(Percent);
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockExpose %.2f accepted=%d%s"), Percent, bOk,
 		bOk ? TEXT("") : TEXT(" (requires a crew pawn and finite exposure in 0..100)"));
+}
+
+void AAirlockPlayerController::AirlockFuel() { ServerFuelStatus(); }
+void AAirlockPlayerController::AirlockFuelSet(float Units) { ServerFuelSet(Units); }
+void AAirlockPlayerController::AirlockFuelLeak() { ServerFuelLeak(); }
+void AAirlockPlayerController::AirlockBypass() { ServerBypassFromConsole(); }
+void AAirlockPlayerController::AirlockFeed(FName CrateId) { ServerFeedById(CrateId); }
+void AAirlockPlayerController::ServerFuelStatus_Implementation()
+{
+	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
+	{ UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->FuelSummary()); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Fuel status rejected: no game mode")); }
+}
+void AAirlockPlayerController::ServerFuelSet_Implementation(float Units)
+{
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM || !GM->FuelHasSystem()) { UE_LOG(LogAirlock, Log, TEXT("Fuel set rejected: No fuel system on this section")); return; }
+	const bool bAccepted = GM->FuelSet(Units);
+	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockFuelSet %.2f accepted=%d"), Units, bAccepted);
+	UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->FuelSummary());
+}
+void AAirlockPlayerController::ServerFuelLeak_Implementation()
+{
+	if (auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr) { GM->FuelLeakConsole(); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Fuel leak rejected: no game mode")); }
+}
+void AAirlockPlayerController::ServerBypassFromConsole_Implementation()
+{
+	if (auto* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->OpenBypassServer(nullptr, false); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Bypass rejected: no crew pawn")); }
+}
+void AAirlockPlayerController::ServerFeedById_Implementation(FName CrateId)
+{
+	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
+	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Feed rejected: no crew pawn")); return; }
+	if (!Crew->CarriedCrate || Crew->CarriedCrate->GetCargoId() != CrateId)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Feed rejected: carrying %s"), Crew->CarriedCrate ? *Crew->CarriedCrate->GetCargoId().ToString() : TEXT("none")); return;
+	}
+	for (TActorIterator<AFuelIntake> It(GetWorld()); It; ++It) { Crew->ServerFeedCask(*It); return; }
+	UE_LOG(LogAirlock, Log, TEXT("Feed rejected: no intake on this section"));
 }

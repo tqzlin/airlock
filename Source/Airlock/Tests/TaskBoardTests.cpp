@@ -105,4 +105,37 @@ bool FAirTaskRowsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Extra air row counted in overflow"), Rows.Last().Text.ToString(), FString(TEXT("+3 more")));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFuelTaskRowsTest, "Airlock.Fuel.TaskRowsPriorityWordsThresholdsAndCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FFuelTaskRowsTest::RunTest(const FString& Parameters)
+{
+	FFuelState Fuel; Fuel.bFeedLeak = true; Fuel.bInjectorsFouled = true;
+	FAtmosphereState Air; Air.Ppm = 30;
+	FCargoCrateState C; C.Id = TEXT("C2"); C.bVolatile = true; C.Temperature = 45;
+	auto Rows = UTaskBoardWidget::BuildRows({}, {}, {C}, &Air, &Fuel);
+	TestEqual(TEXT("Leak first"), Rows[0].Text.ToString(), FString(TEXT("Fuel leak - shut the feed valve")));
+	TestTrue(TEXT("Leak red"), Rows[0].bFailed); TestTrue(TEXT("Air second"), Rows[1].Text.ToString().StartsWith(TEXT("Hold air")));
+	TestEqual(TEXT("Injectors third"), Rows[2].Text.ToString(), FString(TEXT("Clear the injectors")));
+	TestTrue(TEXT("Heat follows"), Rows[3].Text.ToString().StartsWith(TEXT("Cool crate")));
+	Fuel.bFeedLeak = false; Fuel.bInjectorsFouled = false; Fuel.Units = 18;
+	Rows = UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel);
+	TestEqual(TEXT("Closed wording"), Rows[0].Text.ToString(), FString(TEXT("Fuel 18% - open the bypass and feed casks")));
+	TestFalse(TEXT("Low not red"), Rows[0].bFailed); Fuel.bBypassOpen = true;
+	Rows = UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel);
+	TestEqual(TEXT("Open wording"), Rows[0].Text.ToString(), FString(TEXT("Fuel 18% - feed casks to the intake")));
+	Fuel.Units = 15; TestFalse(TEXT("15 not critical"), UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel)[0].bFailed);
+	Fuel.Units = 14; TestTrue(TEXT("Below 15 critical"), UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel)[0].bFailed);
+	Fuel.BurningCrate = TEXT("C1");
+	TestEqual(TEXT("Burn hides low row"), UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel)[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	Fuel.BurningCrate = NAME_None; Fuel.Units = 30;
+	TestEqual(TEXT("30 has no row"), UTaskBoardWidget::BuildRows({}, {}, {}, nullptr, &Fuel)[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	C.State = ECargoState::Burned;
+	TestEqual(TEXT("Burned no heat row"), UTaskBoardWidget::BuildRows({}, {}, {C})[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	TArray<FCargoCrateState> Cargo; C.State = ECargoState::Loose; for (int32 I=0; I<10; ++I) { Cargo.Add(C); }
+	Fuel.bFeedLeak = true; Fuel.bInjectorsFouled = true;
+	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, &Air, &Fuel);
+	TestEqual(TEXT("Cap still eight plus overflow"), Rows.Num(), 9); TestEqual(TEXT("Overflow count"), Rows.Last().Text.ToString(), FString(TEXT("+5 more")));
+	return true;
+}
 #endif

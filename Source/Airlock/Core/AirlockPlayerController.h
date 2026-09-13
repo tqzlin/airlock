@@ -132,6 +132,16 @@ public:
 	UFUNCTION(Server, Reliable) void ServerPlaceById(FName SlotId);
 	UFUNCTION(Server, Reliable) void ServerCrateHeat(FName CrateId, float Temperature);
 	UFUNCTION(Server, Reliable) void ServerCargoTally();
+	UFUNCTION(Exec) void AirlockFuel();
+	UFUNCTION(Exec) void AirlockFuelSet(float Units);
+	UFUNCTION(Exec) void AirlockFuelLeak();
+	UFUNCTION(Exec) void AirlockBypass();
+	UFUNCTION(Exec) void AirlockFeed(FName CrateId);
+	UFUNCTION(Server, Reliable) void ServerFuelStatus();
+	UFUNCTION(Server, Reliable) void ServerFuelSet(float Units);
+	UFUNCTION(Server, Reliable) void ServerFuelLeak();
+	UFUNCTION(Server, Reliable) void ServerBypassFromConsole();
+	UFUNCTION(Server, Reliable) void ServerFeedById(FName CrateId);
 	UFUNCTION(Exec) void AirlockAir();
 	UFUNCTION(Exec) void AirlockScrub(FString Mode);
 	UFUNCTION(Exec) void AirlockAirSet(float Ppm);

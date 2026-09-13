@@ -19,6 +19,10 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/CargoLayouts.h"
+#include "Ship/FuelLayouts.h"
+#include "Ship/FuelValve.h"
+#include "Ship/BypassValve.h"
+#include "Ship/FuelIntake.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
@@ -109,6 +113,7 @@ void AAirlockGameMode::BeginPlay()
 	Super::BeginPlay();
 	BuildShipGraph();
 	BuildCargo();
+	BuildFuel();
 
 	int32 Bound = 0;
 	for (TActorIterator<AAirlockDoor> It(GetWorld()); It; ++It)
@@ -127,8 +132,11 @@ void AAirlockGameMode::BeginPlay()
 	if (GS && GS->CurrentSectionId != HubSectionId && Voyages && Voyages->GetPendingVoyage(ActiveVoyage))
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
+		SetPieces = FuelHasSystem() ? FVoyageSetPieces::Build(ActiveVoyage) : TArray<FVoyageSetPiece>();
+		NextSetPiece = 0; bFuelFollowupPending = false; bFuelShortSpoken = false;
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
+		if (FuelHasSystem()) { FuelModel.Reset(); PublishFuel(); }
 		AirCaptainLastSpoken.Reset();
 		BlackoutCount = 0; CountedBlackouts.Reset();
 		GS->bVoyageActive = true;
@@ -260,8 +268,9 @@ void AAirlockGameMode::ScheduleNextVoyageEvent()
 		return;
 	}
 	const double Elapsed = ActiveVoyage.DurationSeconds - (GS->VoyageEndServerTime - GS->GetServerWorldTimeSeconds());
-	const double NextAt = CaptainSchedule.IsValidIndex(NextCaptainEntry)
+	double NextAt = CaptainSchedule.IsValidIndex(NextCaptainEntry)
 		? CaptainSchedule[NextCaptainEntry].AtSeconds : ActiveVoyage.DurationSeconds;
+	if (SetPieces.IsValidIndex(NextSetPiece)) { NextAt = FMath::Min(NextAt, static_cast<double>(SetPieces[NextSetPiece].AtSeconds)); }
 	const double Delay = NextAt - Elapsed;
 	if (Delay <= 0.0)
 	{
@@ -288,6 +297,8 @@ void AAirlockGameMode::TickVoyageClock()
 	if (Elapsed >= ActiveVoyage.DurationSeconds && IncidentDirector) { IncidentDirector->FireDueIncidents(); }
 	while (NextCaptainEntry < DueEnd)
 	{
+		// On a jump to docking, consume the leak before the final docking caption.
+		if (CaptainSchedule[NextCaptainEntry].AtSeconds >= ActiveVoyage.DurationSeconds) { FireDueSetPieces(Elapsed); }
 		const FText& Line = CaptainSchedule[NextCaptainEntry++].Line;
 		UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -298,6 +309,7 @@ void AAirlockGameMode::TickVoyageClock()
 			}
 		}
 	}
+	FireDueSetPieces(Elapsed);
 	if (Elapsed >= ActiveVoyage.DurationSeconds)
 	{
 		ReturnToHub();
@@ -408,6 +420,7 @@ void AAirlockGameMode::TickShipGraph()
 		const bool bAirChanged = AtmosphereModel.Tick(0.25f, CargoModel.Crates());
 		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
 	}
+	TickFuel();
 }
 
 void AAirlockGameMode::PublishShipGraph()
@@ -555,7 +568,7 @@ FName AAirlockGameMode::CargoFirstFilledClamp() const
 }
 FVoyageResult AAirlockGameMode::CargoTally() const
 {
-	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount);
+	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount, FuelHasSystem() ? &FuelModel.State() : nullptr);
 }
 FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
 
@@ -666,4 +679,156 @@ void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
 	CountedBlackouts.Add(Pawn, Crew->BlackoutEndServerTime);
 	++BlackoutCount;
 	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down - med-bot's on it."), Pawn);
+}
+
+bool AAirlockGameMode::FuelHasSystem() const
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	return GS && FuelLayouts::Find(GS->CurrentSectionId) != nullptr;
+}
+void AAirlockGameMode::BuildFuel()
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	const auto* Layout = GS ? FuelLayouts::Find(GS->CurrentSectionId) : nullptr;
+	if (!HasAuthority() || !Layout) { return; }
+	FuelModel.Reset(); PublishFuel();
+	const auto Spawn = [this]<typename T>(const FFuelFixtureSpec& Spec)
+	{
+		FActorSpawnParameters Params; Params.Name = Spec.Id; Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Actor = GetWorld()->SpawnActor<T>(T::StaticClass(), Spec.Transform, Params))
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false); Actor->SetFolderPath(TEXT("Fuel"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	};
+	Spawn.operator()<AFuelValve>(Layout->FeedValve);
+	Spawn.operator()<ABypassValve>(Layout->BypassValve);
+	Spawn.operator()<AFuelIntake>(Layout->Intake);
+	if (!GetWorldTimerManager().IsTimerActive(ShipGraphTimer))
+	{ GetWorldTimerManager().SetTimer(ShipGraphTimer, this, &AAirlockGameMode::TickShipGraph, .25f, true); }
+}
+void AAirlockGameMode::PublishFuel()
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return; }
+	auto* GS = GetGameState<AAirlockGameState>();
+	FFuelState Mirror = FuelModel.State(); Mirror.Units = FMath::FloorToFloat(Mirror.Units);
+	const FFuelState Old = GS->Fuel; const FFuelRates R;
+	bool bLog = Old.bFeedLeak != Mirror.bFeedLeak || Old.bBypassOpen != Mirror.bBypassOpen
+		|| Old.bInjectorsFouled != Mirror.bInjectorsFouled || Old.bExhausted != Mirror.bExhausted;
+	for (float Percent : { R.LowFuelPercent, R.CriticalFuelPercent })
+	{ const float Threshold = R.Capacity * Percent / 100.f; bLog |= (Old.Units < Threshold) != (Mirror.Units < Threshold); }
+	GS->PublishFuel(Mirror);
+	if (bLog) { UE_LOG(LogAirlock, Log, TEXT("Fuel %d%% leak=%d bypass=%s"), FMath::FloorToInt(Mirror.Units), Mirror.bFeedLeak, Mirror.bBypassOpen ? TEXT("open") : TEXT("closed")); }
+	if (!Old.bInjectorsFouled && Mirror.bInjectorsFouled) { UE_LOG(LogAirlock, Log, TEXT("Injectors fouled")); }
+	if (Old.bInjectorsFouled && !Mirror.bInjectorsFouled) { UE_LOG(LogAirlock, Log, TEXT("Injectors cleared")); }
+}
+void AAirlockGameMode::TickFuel()
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !FuelHasSystem() || !GS->bVoyageActive) { return; }
+	const auto Before = FuelModel.State();
+	if (AirHasAtmosphere() && AtmosphereModel.AddPpm(FuelModel.SootPerSecond() * .25f)) { PublishAtmosphere(); }
+	if (FuelModel.Tick(.25f)) { PublishFuel(); }
+	// The reserve call is tied to the fuel, not to the 10 s follow-up: whenever the ship first goes short, once.
+	if (!bFuelShortSpoken && !bTravelPending && FuelModel.IsShort(GS->GetVoyageSecondsRemaining()))
+	{
+		bFuelShortSpoken = true;
+		SpeakVoyageLine(FText::Format(NSLOCTEXT("Airlock", "FuelReserveGone", "Captain {0} here. Reserve's gone - open the crude bypass and feed me casks, or we dock short."), FText::FromName(ActiveVoyage.Captain)));
+	}
+	if (FuelModel.State().CasksBurned != Before.CasksBurned)
+	{ UE_LOG(LogAirlock, Log, TEXT("Fuel feed %s done: +15"), *Before.BurningCrate.ToString()); }
+	if (!Before.bExhausted && FuelModel.State().bExhausted)
+	{
+		SetVoyageSecondsRemaining(GS->GetVoyageSecondsRemaining() + FFuelRates().LateDockSeconds);
+		UE_LOG(LogAirlock, Log, TEXT("Fuel exhausted: docking 120 s late"));
+		SpeakAirCaptain(TEXT("FuelExhausted"), NSLOCTEXT("Airlock", "FuelExhausted", "Captain {0} here. We're dry. Coasting in on momentum - we dock late."));
+	}
+}
+bool AAirlockGameMode::FuelOpenLeak()
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return false; }
+	FuelModel.OpenLeak(); PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelCloseLeak()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.CloseLeak()) { return false; }
+	PublishFuel(); FuelFollowup(); return true;
+}
+bool AAirlockGameMode::FuelOpenBypass()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.OpenBypass()) { return false; }
+	PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelFeedCask(FName Id)
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return false; }
+	const float Fouling = FuelModel.FoulingOnFeed();
+	// Stage fuel first: a refused cargo consume must leave even the burn clock unchanged.
+	FFuelSystem Candidate = FuelModel;
+	if (!Candidate.FeedCask(Id) || !CargoModel.Consume(Id)) { return false; }
+	FuelModel = Candidate;
+	ShipDamageModule(TEXT("Engines"), Fouling);
+	PublishCargo(); PublishFuel();
+	UE_LOG(LogAirlock, Log, TEXT("Fuel feed %s started"), *Id.ToString()); return true;
+}
+bool AAirlockGameMode::FuelClearInjectors()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.ClearInjectors()) { return false; }
+	PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelSet(float Units)
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.SetUnits(Units)) { return false; }
+	PublishFuel(); return true;
+}
+FString AAirlockGameMode::FuelSummary() const { return FuelHasSystem() ? FuelModel.Summary() : TEXT("No fuel system on this section"); }
+
+void AAirlockGameMode::SpeakVoyageLine(const FText& Line)
+{
+	UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{ if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); } }
+}
+void AAirlockGameMode::FireDueSetPieces(double Elapsed)
+{
+	while (SetPieces.IsValidIndex(NextSetPiece) && SetPieces[NextSetPiece].AtSeconds <= Elapsed)
+	{ const auto Entry = SetPieces[NextSetPiece++]; FireSetPiece(Entry, Elapsed); }
+}
+void AAirlockGameMode::FireSetPiece(const FVoyageSetPiece& Entry, double Elapsed)
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !GS->bVoyageActive || bTravelPending) { return; }
+	FuelOpenLeak(); SpeakVoyageLine(Entry.CaptainLine);
+	UE_LOG(LogAirlock, Log, TEXT("SetPiece FuelLeak at %.2fs elapsed=%.2fs"), Entry.AtSeconds, Elapsed);
+	bFuelFollowupPending = true;
+	GetWorldTimerManager().SetTimer(FuelFollowupTimer, this, &AAirlockGameMode::FuelFollowup, 10.f, false);
+}
+void AAirlockGameMode::FuelFollowup()
+{
+	if (!bFuelFollowupPending) { return; }
+	bFuelFollowupPending = false; GetWorldTimerManager().ClearTimer(FuelFollowupTimer);
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!GS || !GS->bVoyageActive || bTravelPending) { return; }
+	const FText Pattern = FuelModel.IsShort(GS->GetVoyageSecondsRemaining())
+		? NSLOCTEXT("Airlock", "FuelShort", "Captain {0} here. At this burn we dock short. Sludge is methane - open the crude bypass and feed me casks.")
+		: !FuelModel.State().bFeedLeak
+		? NSLOCTEXT("Airlock", "FuelShutGood", "Captain {0} here. Feed's shut. We're still good for the refinery.")
+		: NSLOCTEXT("Airlock", "FuelStillGood", "Captain {0} here. Shut that feed. We're still good for the refinery - for now.");
+	SpeakVoyageLine(FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain)));
+}
+void AAirlockGameMode::FuelLeakConsole()
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !FuelHasSystem()) { UE_LOG(LogAirlock, Log, TEXT("No fuel system on this section")); return; }
+	if (GS->bVoyageActive && !bTravelPending && SetPieces.IsValidIndex(NextSetPiece))
+	{
+		const auto Entry = SetPieces[NextSetPiece++];
+		FireSetPiece(Entry, ActiveVoyage.DurationSeconds - GS->GetVoyageSecondsRemaining());
+		ScheduleNextVoyageEvent();
+	}
+	else { FuelOpenLeak(); UE_LOG(LogAirlock, Log, TEXT("SetPiece FuelLeak (console)")); }
 }

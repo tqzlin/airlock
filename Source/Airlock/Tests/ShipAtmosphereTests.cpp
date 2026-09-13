@@ -153,4 +153,18 @@ bool FAirExposureModelTest::RunTest(const FString& Parameters)
 	{ TestEqual(TEXT("Invalid delta returns input"), FShipAtmosphere::TickExposure(37, 100, D, R), 37.f); }
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirBurnedTest, "Airlock.Atmosphere.BurnedCaskDropsPuffClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FAirBurnedTest::RunTest(const FString& Parameters)
+{
+	FShipAtmosphere M; M.SetScrubMode(EScrubMode::Off);
+	TArray<FCargoCrateState> C = { WarmAirTestCrate() };
+	M.Tick(9, C); C[0].State = ECargoState::Burned; M.Tick(100, C);
+	TestEqual(TEXT("Burn adds no gas or rupture"), M.GetPpm(), 18.f);
+	TestFalse(TEXT("Burn drops puff FX"), M.IsPuffing(C[0].Id));
+	TestEqual(TEXT("No sources"), M.State().ActiveSources, 0);
+	C[0].State = ECargoState::Carried; M.Tick(10, C);
+	TestEqual(TEXT("Requalification has a fresh ten second puff"), M.GetPpm(), 38.f);
+	return true;
+}
 #endif
