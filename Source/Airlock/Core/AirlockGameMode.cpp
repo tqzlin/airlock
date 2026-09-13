@@ -117,13 +117,18 @@ APawn* AAirlockGameMode::SpawnDefaultPawnAtTransform_Implementation(AController*
 				*Occupant->GetName(), *GetNameSafe(Occupant->GetController()), Step * ArrivalSpacing);
 			continue;
 		}
-		// A side step into a wall is skipped quietly, using the same test SpawnActor's adjust-or-refuse uses (a map
-		// PlayerStart sits at floor level, so the capsule always needs the lift FindTeleportSpot allows); the start
-		// itself keeps the engine's own behaviour.
-		FVector Probe = Candidate.GetLocation();
-		if (Step != 0.f && !World->FindTeleportSpot(PawnClass->GetDefaultObject<APawn>(), Probe, Candidate.GetRotation().Rotator()))
+		// A side step into a wall is skipped quietly, using the same test SpawnActor's adjust-or-refuse uses: the spot
+		// must be clear, or clear after a vertical lift only (a map PlayerStart sits at floor level, so the capsule
+		// always needs the lift FindTeleportSpot allows); a spot the engine would have to push sideways is a wall,
+		// and which way it pushes is a coin toss. The start itself keeps the engine's own behaviour.
+		if (Step != 0.f)
 		{
-			continue;
+			FVector Probe = Candidate.GetLocation();
+			const bool bClear = World->FindTeleportSpot(PawnClass->GetDefaultObject<APawn>(), Probe, Candidate.GetRotation().Rotator());
+			if (!bClear || FVector::DistSquaredXY(Probe, Candidate.GetLocation()) > FMath::Square(10.f))
+			{
+				continue;
+			}
 		}
 		FActorSpawnParameters Params;
 		Params.Instigator = GetInstigator();
