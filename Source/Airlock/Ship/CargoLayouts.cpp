@@ -8,11 +8,13 @@ namespace
 	// clamp controller at (-6300, 1900) - `verify-refinery.ps1 -ProbePositions` checks them all.
 	const FVector2D CrateSpots[12] = {
 		{ -6100, 1700 }, { -5600, 1700 }, { -5300, 1700 }, { -5000, 1700 },
-		{ -5850, 1850 }, { -5450, 1850 }, { -5150, 1850 }, { -4800, 1850 },
-		{ -6100, 2000 }, { -5700, 2000 }, { -5300, 2000 }, { -4900, 2000 } };
+		{ -6100, 1900 }, { -5500, 1900 }, { -5350, 1900 }, { -5200, 1900 },
+		{ -6100, 2000 }, { -5500, 2000 }, { -5350, 2000 }, { -5200, 2000 } };
 	const FVector2D ClampSpots[9] = {
-		{ -6200, 1400 }, { -5700, 1400 }, { -5200, 1400 }, { -4700, 1400 },
-		{ -6200, 1250 }, { -5825, 1250 }, { -5450, 1250 }, { -5075, 1250 }, { -4700, 1250 } };
+		{ -6200, 1400 }, { -5700, 1400 }, { -5200, 1400 }, { -5950, 1400 }, { -5450, 1400 },
+		{ -5950, 1250 }, { -5650, 1250 }, { -5500, 1250 }, { -5050, 1200 } };
+	// Pallets are 192 cm square; at 0.75 they sit 6 cm apart on the rows above (grid probe 2026-09-12).
+	const FVector PalletScale(0.75f);
 	const TCHAR* PalletMesh = TEXT("/Game/ModSci_EngiProps/Meshes/SM_PlasticPallet.SM_PlasticPallet");
 	const TCHAR* ShelfMesh = TEXT("/Game/StarterBundle/ModularScifiProps/Meshes/SM_Shelf_A_v1.SM_Shelf_A_v1");
 	const TCHAR* CaseMesh = TEXT("/Game/ModSci_EngiProps/Meshes/SM_Case_A.SM_Case_A"); // measured 120.49 x 67.55 x 51.00 cm
@@ -31,6 +33,7 @@ FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 Volatil
 		Slot.Id = FName(*FString::Printf(TEXT("Clamp_%d"), I + 1));
 		Slot.Transform = FTransform(FVector(ClampSpots[I].X, ClampSpots[I].Y, -65));
 		Slot.Mesh = FSoftObjectPath(PalletMesh);
+		Slot.MeshScale = PalletScale;
 		Layout.Slots.Add(Slot);
 	}
 	FCargoSlotSpec Rack;

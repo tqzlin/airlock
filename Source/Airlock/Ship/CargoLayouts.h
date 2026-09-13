@@ -11,6 +11,8 @@ struct AIRLOCK_API FCargoSlotSpec
 	UPROPERTY() bool bRack = false;
 	UPROPERTY() FTransform Transform;
 	UPROPERTY() FSoftObjectPath Mesh;
+	/** Applied to the pad mesh only (the actor stays at scale 1, so a placed crate keeps its size). */
+	UPROPERTY() FVector MeshScale = FVector(1.f);
 };
 
 USTRUCT()
