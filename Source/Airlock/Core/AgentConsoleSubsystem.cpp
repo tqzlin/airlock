@@ -13,7 +13,9 @@
 bool UAgentConsoleSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
 #if WITH_EDITOR
-	return Super::ShouldCreateSubsystem(Outer);
+	// A game instance with no world context is an automation harness: it must not poll (and eat) a proof's commands.
+	const UGameInstance* OuterInstance = Cast<UGameInstance>(Outer);
+	return Super::ShouldCreateSubsystem(Outer) && OuterInstance && OuterInstance->GetWorldContext() != nullptr;
 #else
 	return false;
 #endif
@@ -21,14 +23,29 @@ bool UAgentConsoleSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 
 FString UAgentConsoleSubsystem::CommandFilePath()
 {
-	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AgentConsole"), TEXT("commands.txt"));
+	return CommandFilePathFor(INDEX_NONE);
+}
+
+FString UAgentConsoleSubsystem::CommandFilePathFor(int32 PIEInstance)
+{
+	const FString File = PIEInstance > 0 ? FString::Printf(TEXT("commands.client%d.txt"), PIEInstance) : FString(TEXT("commands.txt"));
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AgentConsole"), File);
+}
+
+FString UAgentConsoleSubsystem::EchoPrefixFor(int32 PIEInstance)
+{
+	return PIEInstance > 0 ? FString::Printf(TEXT("AgentConsole client %d"), PIEInstance) : FString(TEXT("AgentConsole"));
 }
 
 void UAgentConsoleSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	const FWorldContext* Context = GetGameInstance() ? GetGameInstance()->GetWorldContext() : nullptr;
+	Instance = Context ? Context->PIEInstance : INDEX_NONE;
+	WatchedPath = CommandFilePathFor(Instance);
+	Prefix = EchoPrefixFor(Instance);
 	TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAgentConsoleSubsystem::Poll), 0.5f);
-	UE_LOG(LogAirlock, Log, TEXT("AgentConsole: watching %s"), *CommandFilePath());
+	UE_LOG(LogAirlock, Log, TEXT("%s: watching %s"), *Prefix, *WatchedPath);
 }
 
 void UAgentConsoleSubsystem::Deinitialize()
@@ -39,20 +56,32 @@ void UAgentConsoleSubsystem::Deinitialize()
 
 bool UAgentConsoleSubsystem::Poll(float /*DeltaTime*/)
 {
-	const FString Path = CommandFilePath();
-	if (!IFileManager::Get().FileExists(*Path))
+	UWorld* World = GetWorld();
+	// During a seamless travel the controllers sit in the transition world: leave the file alone so a command is
+	// only ever consumed in the destination world (a Server RPC sent mid-travel is dropped silently).
+	const FWorldContext* Context = (World && GEngine) ? GEngine->GetWorldContextFromWorld(World) : nullptr;
+	if (Context && Context->SeamlessTravelHandler.IsInTransition())
+	{
+		return true;
+	}
+	APlayerController* PC = (World && GetGameInstance()) ? GetGameInstance()->GetFirstLocalPlayerController(World) : nullptr;
+	if (World && PC && ReadyWorld.Get() != World)
+	{
+		ReadyWorld = World;
+		UE_LOG(LogAirlock, Log, TEXT("%s: ready (map=%s, pc=%s)"), *Prefix, *World->GetMapName(), *PC->GetName());
+	}
+
+	if (!IFileManager::Get().FileExists(*WatchedPath))
 	{
 		return true;
 	}
 	TArray<FString> Lines;
-	if (!FFileHelper::LoadFileToStringArray(Lines, *Path))
+	if (!FFileHelper::LoadFileToStringArray(Lines, *WatchedPath))
 	{
 		return true; // still being written; try again next tick
 	}
-	IFileManager::Get().Delete(*Path);
+	IFileManager::Get().Delete(*WatchedPath);
 
-	UWorld* World = GetWorld();
-	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
 	for (FString& Line : Lines)
 	{
 		Line.TrimStartAndEndInline();
@@ -60,7 +89,7 @@ bool UAgentConsoleSubsystem::Poll(float /*DeltaTime*/)
 		{
 			continue;
 		}
-		UE_LOG(LogAirlock, Log, TEXT("AgentConsole: %s"), *Line);
+		UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *Prefix, *Line);
 		if (PC)
 		{
 			PC->ConsoleCommand(Line);

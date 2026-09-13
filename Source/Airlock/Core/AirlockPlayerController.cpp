@@ -27,6 +27,12 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/FuelIntake.h"
+#include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerState.h"
+#include "ImageUtils.h"
+#include "Misc/Paths.h"
+#include "Widgets/SViewport.h"
 
 AAirlockPlayerController::AAirlockPlayerController()
 {
@@ -163,6 +169,7 @@ void AAirlockPlayerController::AirlockLook(float Yaw, float Pitch)
 }
 void AAirlockPlayerController::ServerSitByStationId_Implementation(FName StationId)
 {
+	if (!CheatAllowed(TEXT("AirlockSit"))) { return; }
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockSit %s"), *StationId.ToString());
 	AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn());
 	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Seat rejected: no crew pawn")); return; }
@@ -174,6 +181,7 @@ void AAirlockPlayerController::ServerSitByStationId_Implementation(FName Station
 }
 void AAirlockPlayerController::ServerStandUpFromConsole_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockStand"))) { return; }
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockStand"));
 	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerStandUp(); }
 }
@@ -345,6 +353,49 @@ void AAirlockPlayerController::AirlockWhere()
 		*ViewLoc.ToString(), *ViewRot.ToString());
 }
 
+bool AAirlockPlayerController::CheatAllowed(const TCHAR* Helper)
+{
+	AGameModeBase* GM = GetWorld() ? GetWorld()->GetAuthGameMode() : nullptr;
+	if (GM && GM->AllowCheats(this)) { return true; }
+	UE_LOG(LogAirlock, Log, TEXT("Cheat %s refused for %s: %s"), Helper,
+		PlayerState ? *PlayerState->GetPlayerName() : *GetName(), GM ? TEXT("airlock.DevCheats is 0") : TEXT("no game mode"));
+	return false;
+}
+
+void AAirlockPlayerController::AirlockCapture(FString Label)
+{
+#if UE_BUILD_SHIPPING
+	UE_LOG(LogAirlock, Log, TEXT("Capture %s failed: not available in Shipping"), *Label);
+#else
+	Label = FPaths::MakeValidFileName(Label);
+	UGameViewportClient* Viewport = GetGameInstance() ? GetGameInstance()->GetGameViewportClient() : nullptr;
+	TSharedPtr<SViewport> Widget = Viewport ? Viewport->GetGameViewportWidget() : nullptr;
+	if (Label.IsEmpty() || !Widget.IsValid() || !FSlateApplication::IsInitialized())
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Capture %s failed: no game viewport on this instance"), *Label);
+		return;
+	}
+	TArray<FColor> Pixels;
+	FIntVector Size(0, 0, 0);
+	if (!FSlateApplication::Get().TakeScreenshot(Widget.ToSharedRef(), Pixels, Size) || Size.X <= 0 || Size.Y <= 0 || Pixels.Num() < Size.X * Size.Y)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Capture %s failed: the viewport did not render"), *Label);
+		return;
+	}
+	for (FColor& Pixel : Pixels) { Pixel.A = 255; }
+	const FString Path = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AgentCaptures"), Label + TEXT(".png")));
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+	if (FImageUtils::SaveImageByExtension(*Path, FImageView(Pixels.GetData(), Size.X, Size.Y)))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Capture %s saved %dx%d: %s"), *Label, Size.X, Size.Y, *Path);
+	}
+	else
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Capture %s failed: could not write %s"), *Label, *Path);
+	}
+#endif
+}
+
 void AAirlockPlayerController::AirlockVoyageClock(float SecondsRemaining)
 {
 	ServerSetVoyageClock(SecondsRemaining);
@@ -352,6 +403,7 @@ void AAirlockPlayerController::AirlockVoyageClock(float SecondsRemaining)
 
 void AAirlockPlayerController::ServerSetVoyageClock_Implementation(float SecondsRemaining)
 {
+	if (!CheatAllowed(TEXT("AirlockVoyageClock"))) { return; }
 	if (AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{
 		GM->SetVoyageSecondsRemaining(SecondsRemaining);
@@ -360,6 +412,7 @@ void AAirlockPlayerController::ServerSetVoyageClock_Implementation(float Seconds
 
 void AAirlockPlayerController::ServerWarp_Implementation(FVector Location)
 {
+	if (!CheatAllowed(TEXT("AirlockWarp"))) { return; }
 	if (APawn* P = GetPawn())
 	{
 		P->TeleportTo(Location, P->GetActorRotation(), /*bIsATest*/ false, /*bNoCheck*/ true);
@@ -375,6 +428,7 @@ void AAirlockPlayerController::AirlockRelease() { ServerReleaseHold(); }
 
 void AAirlockPlayerController::ServerShipFault_Implementation(FName LineId, const FString& Fault)
 {
+	if (!CheatAllowed(TEXT("AirlockFault"))) { return; }
 	EShipLineFault Parsed;
 	if (Fault.Equals(TEXT("None"), ESearchCase::IgnoreCase)) { Parsed = EShipLineFault::None; }
 	else if (Fault.Equals(TEXT("Leak"), ESearchCase::IgnoreCase)) { Parsed = EShipLineFault::Leak; }
@@ -390,12 +444,14 @@ void AAirlockPlayerController::ServerShipFault_Implementation(FName LineId, cons
 }
 void AAirlockPlayerController::ServerAdjustShipModule_Implementation(FName ModuleId, float Amount, bool bRepair)
 {
+	if (!CheatAllowed(bRepair ? TEXT("AirlockRepairModule") : TEXT("AirlockDamage"))) { return; }
 	AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	const bool bOk = GM && (bRepair ? GM->ShipRepairModule(ModuleId, Amount) : GM->ShipDamageModule(ModuleId, Amount));
 	UE_LOG(LogAirlock, Log, TEXT("Console: %s %s %.2f accepted=%d"), bRepair ? TEXT("AirlockRepairModule") : TEXT("AirlockDamage"), *ModuleId.ToString(), Amount, bOk);
 }
 void AAirlockPlayerController::ServerShipStatus_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockShipStatus"))) { return; }
 	if (const AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Console: AirlockShipStatus"));
@@ -407,6 +463,7 @@ void AAirlockPlayerController::ServerShipStatus_Implementation()
 }
 void AAirlockPlayerController::ServerHoldByLabel_Implementation(const FString& TargetLabel)
 {
+	if (!CheatAllowed(TEXT("AirlockHold"))) { return; }
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockHold %s"), *TargetLabel);
 	AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn());
 	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Hold rejected: no crew pawn")); return; }
@@ -422,6 +479,7 @@ void AAirlockPlayerController::ServerHoldByLabel_Implementation(const FString& T
 }
 void AAirlockPlayerController::ServerReleaseHold_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockRelease"))) { return; }
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockRelease"));
 	if (AAirlockCharacter* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerEndHold(); }
 }
@@ -435,6 +493,7 @@ void AAirlockPlayerController::AirlockIncidentSchedule() { ServerIncidentSchedul
 
 void AAirlockPlayerController::ServerIncident_Implementation(const FString& Type, FName TargetId, float Magnitude)
 {
+	if (!CheatAllowed(TEXT("AirlockIncident"))) { return; }
 	EIncidentType Parsed;
 	if (Type.Equals(TEXT("CoolantLeak"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::CoolantLeak; }
 	else if (Type.Equals(TEXT("PowerShort"), ESearchCase::IgnoreCase)) { Parsed = EIncidentType::PowerShort; }
@@ -458,6 +517,7 @@ void AAirlockPlayerController::ServerIncident_Implementation(const FString& Type
 
 void AAirlockPlayerController::ServerIncidentSchedule_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockIncidentSchedule"))) { return; }
 	const AAirlockGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	const UIncidentDirectorComponent* Director = GM ? GM->GetIncidentDirector() : nullptr;
 	if (Director) { Director->LogSchedule(); }
@@ -473,6 +533,7 @@ void AAirlockPlayerController::AirlockTally() { ServerCargoTally(); }
 
 void AAirlockPlayerController::ServerCargoStatus_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockCargoStatus"))) { return; }
 	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{
 		TArray<FString> Lines;
@@ -483,6 +544,7 @@ void AAirlockPlayerController::ServerCargoStatus_Implementation()
 }
 void AAirlockPlayerController::ServerCarryById_Implementation(FName CrateId)
 {
+	if (!CheatAllowed(TEXT("AirlockCarry"))) { return; }
 	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
 	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: no crew pawn")); return; }
 	for (TActorIterator<ACargoCrate> It(GetWorld()); It; ++It)
@@ -493,11 +555,13 @@ void AAirlockPlayerController::ServerCarryById_Implementation(FName CrateId)
 }
 void AAirlockPlayerController::ServerDropCargo_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockDrop"))) { return; }
 	if (auto* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->ServerPutDown(); }
 	else { UE_LOG(LogAirlock, Log, TEXT("PutDown rejected: no crew pawn")); }
 }
 void AAirlockPlayerController::ServerPlaceById_Implementation(FName SlotId)
 {
+	if (!CheatAllowed(TEXT("AirlockPlace"))) { return; }
 	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
 	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Place rejected: no crew pawn")); return; }
 	for (TActorIterator<ACargoSlot> It(GetWorld()); It; ++It)
@@ -508,6 +572,7 @@ void AAirlockPlayerController::ServerPlaceById_Implementation(FName SlotId)
 }
 void AAirlockPlayerController::ServerCrateHeat_Implementation(FName CrateId, float Temperature)
 {
+	if (!CheatAllowed(TEXT("AirlockCrateHeat"))) { return; }
 	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	const bool bOk = GM && GM->CargoSetTemperature(CrateId, Temperature);
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockCrateHeat %s %.2f accepted=%d%s"), *CrateId.ToString(), Temperature, bOk,
@@ -515,6 +580,7 @@ void AAirlockPlayerController::ServerCrateHeat_Implementation(FName CrateId, flo
 }
 void AAirlockPlayerController::ServerCargoTally_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockTally"))) { return; }
 	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Tally now: %s"), *GM->CargoTally().Summary());
@@ -527,6 +593,7 @@ void AAirlockPlayerController::AirlockBaseFuelSet(int32 Tonnes) { ServerBaseFuel
 void AAirlockPlayerController::AirlockSaveReset() { ServerBaseFuel(2, 0); }
 void AAirlockPlayerController::ServerBaseFuel_Implementation(int32 Mode, int32 Tonnes)
 {
+	if (!CheatAllowed(Mode == 2 ? TEXT("AirlockSaveReset") : Mode == 1 ? TEXT("AirlockBaseFuelSet") : TEXT("AirlockBaseFuel"))) { return; }
 	UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
 	if (!Voyages) { UE_LOG(LogAirlock, Log, TEXT("Base fuel rejected: no voyage subsystem")); return; }
 	if (Mode == 1) { Voyages->SetBaseFuelTonnes(Tonnes); }
@@ -543,6 +610,7 @@ void AAirlockPlayerController::AirlockAirSet(float Ppm) { ServerAirSet(Ppm); }
 void AAirlockPlayerController::AirlockExpose(float Percent) { ServerExpose(Percent); }
 void AAirlockPlayerController::ServerAirStatus_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockAir"))) { return; }
 	const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Air status rejected: no game mode")); return; }
 	UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->AirSummary());
@@ -553,6 +621,7 @@ void AAirlockPlayerController::ServerAirStatus_Implementation()
 }
 void AAirlockPlayerController::ServerScrubFromConsole_Implementation(const FString& Mode)
 {
+	if (!CheatAllowed(TEXT("AirlockScrub"))) { return; }
 	EScrubMode Parsed;
 	if (Mode.Equals(TEXT("Off"), ESearchCase::IgnoreCase)) { Parsed = EScrubMode::Off; }
 	else if (Mode.Equals(TEXT("Normal"), ESearchCase::IgnoreCase)) { Parsed = EScrubMode::Normal; }
@@ -563,6 +632,7 @@ void AAirlockPlayerController::ServerScrubFromConsole_Implementation(const FStri
 }
 void AAirlockPlayerController::ServerAirSet_Implementation(float Ppm)
 {
+	if (!CheatAllowed(TEXT("AirlockAirSet"))) { return; }
 	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	if (!GM || !GM->AirHasAtmosphere()) { UE_LOG(LogAirlock, Log, TEXT("Air set rejected: No atmosphere on this section")); return; }
 	const bool bOk = GM->AirSetPpm(Ppm);
@@ -571,6 +641,7 @@ void AAirlockPlayerController::ServerAirSet_Implementation(float Ppm)
 }
 void AAirlockPlayerController::ServerExpose_Implementation(float Percent)
 {
+	if (!CheatAllowed(TEXT("AirlockExpose"))) { return; }
 	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
 	const bool bOk = Crew && Crew->SetExposureServer(Percent);
 	UE_LOG(LogAirlock, Log, TEXT("Console: AirlockExpose %.2f accepted=%d%s"), Percent, bOk,
@@ -584,12 +655,14 @@ void AAirlockPlayerController::AirlockBypass() { ServerBypassFromConsole(); }
 void AAirlockPlayerController::AirlockFeed(FName CrateId) { ServerFeedById(CrateId); }
 void AAirlockPlayerController::ServerFuelStatus_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockFuel"))) { return; }
 	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{ UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->FuelSummary()); }
 	else { UE_LOG(LogAirlock, Log, TEXT("Fuel status rejected: no game mode")); }
 }
 void AAirlockPlayerController::ServerFuelSet_Implementation(float Units)
 {
+	if (!CheatAllowed(TEXT("AirlockFuelSet"))) { return; }
 	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
 	if (!GM || !GM->FuelHasSystem()) { UE_LOG(LogAirlock, Log, TEXT("Fuel set rejected: No fuel system on this section")); return; }
 	const bool bAccepted = GM->FuelSet(Units);
@@ -598,16 +671,19 @@ void AAirlockPlayerController::ServerFuelSet_Implementation(float Units)
 }
 void AAirlockPlayerController::ServerFuelLeak_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockFuelLeak"))) { return; }
 	if (auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr) { GM->FuelLeakConsole(); }
 	else { UE_LOG(LogAirlock, Log, TEXT("Fuel leak rejected: no game mode")); }
 }
 void AAirlockPlayerController::ServerBypassFromConsole_Implementation()
 {
+	if (!CheatAllowed(TEXT("AirlockBypass"))) { return; }
 	if (auto* Crew = Cast<AAirlockCharacter>(GetPawn())) { Crew->OpenBypassServer(nullptr, false); }
 	else { UE_LOG(LogAirlock, Log, TEXT("Bypass rejected: no crew pawn")); }
 }
 void AAirlockPlayerController::ServerFeedById_Implementation(FName CrateId)
 {
+	if (!CheatAllowed(TEXT("AirlockFeed"))) { return; }
 	auto* Crew = Cast<AAirlockCharacter>(GetPawn());
 	if (!Crew) { UE_LOG(LogAirlock, Log, TEXT("Feed rejected: no crew pawn")); return; }
 	if (!Crew->CarriedCrate || Crew->CarriedCrate->GetCargoId() != CrateId)

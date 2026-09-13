@@ -28,6 +28,18 @@
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "Voyage/IncidentDirectorComponent.h"
+#include "HAL/IConsoleManager.h"
+
+/** The one switch behind every Airlock* console helper (M4-1). On wherever an editor is compiled in (PIE, -game from the editor binary); off in every packaged build until an operator sets it (-ExecCmds="airlock.DevCheats 1" or [ConsoleVariables]). */
+static TAutoConsoleVariable<int32> CVarAirlockDevCheats(
+	TEXT("airlock.DevCheats"),
+#if WITH_EDITOR
+	1,
+#else
+	0,
+#endif
+	TEXT("1 = the Airlock* console helpers (warp, clock, faults, cargo, fuel, air, save) are accepted from any client; 0 = every one is refused and logged."),
+	ECVF_Default);
 
 const FName AAirlockGameMode::HubSectionId(TEXT("StationHub"));
 
@@ -70,6 +82,67 @@ AActor* AAirlockGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	UE_LOG(LogAirlock, Log, TEXT("PlayerStart for %s: %s at %s"), Player ? *Player->GetName() : TEXT("?"),
 		Chosen ? *Chosen->GetName() : TEXT("none"), Chosen ? *Chosen->GetActorLocation().ToString() : TEXT("-"));
 	return Chosen;
+}
+
+APawn* AAirlockGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
+{
+	// Crew arrive in a row (M4-1): the second player through an airlock found the only PlayerStart occupied by the
+	// first and came home as a bodiless spectator ("SpawnActor failed because of collision"). A candidate spot with
+	// a pawn within 90 cm is skipped, the next lies ArrivalSpacing cm along the start's right axis, alternating
+	// sides; when nothing within 240 cm is clear the pawn is still spawned, adjusted where possible.
+	UWorld* World = GetWorld();
+	UClass* PawnClass = GetDefaultPawnClassForController(NewPlayer);
+	if (!World || !PawnClass) { return Super::SpawnDefaultPawnAtTransform_Implementation(NewPlayer, SpawnTransform); }
+	const FVector Right = SpawnTransform.GetRotation().GetRightVector();
+	static const float Steps[] = { 0.f, 1.f, -1.f, 2.f, -2.f };
+	for (float Step : Steps)
+	{
+		FTransform Candidate = SpawnTransform;
+		Candidate.SetLocation(SpawnTransform.GetLocation() + Right * (Step * ArrivalSpacing));
+		// Occupied means another player's pawn stands there; an unpossessed or dying pawn (the arriving player's own
+		// old body during a travel, a spectator, a leftover) does not count.
+		APawn* Occupant = nullptr;
+		for (TActorIterator<APawn> It(World); It && !Occupant; ++It)
+		{
+			if (IsValid(*It) && It->GetController() && It->GetController() != NewPlayer
+				&& FVector::DistSquaredXY(It->GetActorLocation(), Candidate.GetLocation()) < FMath::Square(ArrivalSpacing * 0.75f)
+				&& FMath::Abs(It->GetActorLocation().Z - Candidate.GetLocation().Z) < 200.f)
+			{
+				Occupant = *It;
+			}
+		}
+		if (Occupant)
+		{
+			UE_LOG(LogAirlock, Verbose, TEXT("Arrival spawn for %s: %s (%s) occupies the spot %+.0f cm from the start"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"),
+				*Occupant->GetName(), *GetNameSafe(Occupant->GetController()), Step * ArrivalSpacing);
+			continue;
+		}
+		// A side step into a wall is skipped quietly, using the same test SpawnActor's adjust-or-refuse uses (a map
+		// PlayerStart sits at floor level, so the capsule always needs the lift FindTeleportSpot allows); the start
+		// itself keeps the engine's own behaviour.
+		FVector Probe = Candidate.GetLocation();
+		if (Step != 0.f && !World->FindTeleportSpot(PawnClass->GetDefaultObject<APawn>(), Probe, Candidate.GetRotation().Rotator()))
+		{
+			continue;
+		}
+		FActorSpawnParameters Params;
+		Params.Instigator = GetInstigator();
+		Params.ObjectFlags |= RF_Transient;
+		if (APawn* Pawn = World->SpawnActor<APawn>(PawnClass, Candidate, Params))
+		{
+			if (Step != 0.f)
+			{
+				UE_LOG(LogAirlock, Log, TEXT("Arrival spawn for %s stepped %+.0f cm aside: the start was occupied"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"), Step * ArrivalSpacing);
+			}
+			return Pawn;
+		}
+	}
+	FActorSpawnParameters Forced;
+	Forced.Instigator = GetInstigator();
+	Forced.ObjectFlags |= RF_Transient;
+	Forced.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	UE_LOG(LogAirlock, Warning, TEXT("Arrival spawn for %s forced at the start: no clear spot within %.0f cm"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"), 2.f * ArrivalSpacing);
+	return World->SpawnActor<APawn>(PawnClass, SpawnTransform, Forced);
 }
 
 void AAirlockGameMode::InitGameState()
@@ -864,4 +937,9 @@ void AAirlockGameMode::FuelLeakConsole()
 		ScheduleNextVoyageEvent();
 	}
 	else { FuelOpenLeak(); UE_LOG(LogAirlock, Log, TEXT("SetPiece FuelLeak (console)")); }
+}
+
+bool AAirlockGameMode::AllowCheats(APlayerController* /*Player*/)
+{
+	return CVarAirlockDevCheats.GetValueOnGameThread() != 0;
 }
