@@ -4,8 +4,14 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 
+class UTextRenderComponent;
+
 namespace ShipVisuals
 {
+/** A world-facing, centred label. The offset stays in the owner's frame. */
+AIRLOCK_API void ConfigureLabel(UTextRenderComponent* Label, float WorldSize, float FacingYaw,
+	FLinearColor Colour, FVector RelativeOffset);
+
 inline void LoadBody(UStaticMeshComponent* Body, const FSoftObjectPath& Path, const FVector& FallbackScale)
 {
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Path.TryLoad());

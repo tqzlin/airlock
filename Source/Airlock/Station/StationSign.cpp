@@ -1,5 +1,6 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Station/StationSign.h"
+#include "Ship/ShipVisuals.h"
 #include "Components/SceneComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -12,9 +13,6 @@ AStationSign::AStationSign()
 	SetRootComponent(SignRoot);
 	Text = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Text"));
 	Text->SetupAttachment(SignRoot);
-	Text->SetHorizontalAlignment(EHTA_Center);
-	Text->SetVerticalAlignment(EVRTA_TextCenter);
-	Text->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 void AStationSign::Initialize(const FStationSignSpec& InSpec) { check(HasAuthority()); Spec = InSpec; }
 void AStationSign::BeginPlay()
@@ -26,8 +24,7 @@ void AStationSign::OnRep_Spec()
 {
 	if (Spec.Id.IsNone()) { return; }
 	Text->SetText(FText::FromString(Spec.Line2.IsEmpty() ? Spec.Line1 : Spec.Line1 + TEXT("\n") + Spec.Line2));
-	Text->SetWorldSize(Spec.WorldSize);
-	Text->SetTextRenderColor(Spec.Colour.ToFColor(true));
+	ShipVisuals::ConfigureLabel(Text, Spec.WorldSize, GetActorRotation().Yaw, Spec.Colour, FVector::ZeroVector);
 }
 void AStationSign::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {

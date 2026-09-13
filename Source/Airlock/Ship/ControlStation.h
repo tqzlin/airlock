@@ -50,7 +50,7 @@ public:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> SeatLight;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FVector MarkerExtent = FVector(40.f, 60.f, 70.f);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float MarkerHeight = 90.f;
-	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelSize = 24.f;
+	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelSize = 22.f;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LabelHeight = 200.f;
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") FColor LabelColour = FColor(180, 220, 255);
 	UPROPERTY(EditDefaultsOnly, Category="Ship|Visual") float LightHeight = 150.f;

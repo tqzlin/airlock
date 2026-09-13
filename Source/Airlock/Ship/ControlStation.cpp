@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Ship/ControlStation.h"
 #include "Airlock.h"
+#include "Ship/ShipVisuals.h"
 #include "Components/BoxComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SceneComponent.h"
@@ -23,8 +24,6 @@ AControlStation::AControlStation()
 	Marker->SetHiddenInGame(true);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
 	Label->SetupAttachment(StationRoot);
-	Label->SetHorizontalAlignment(EHTA_Center);
-	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	SeatLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("SeatLight"));
 	SeatLight->SetupAttachment(StationRoot);
 	SeatLight->SetIntensityUnits(ELightUnits::Candelas);
@@ -51,10 +50,7 @@ void AControlStation::OnRep_Spec()
 	{
 		Marker->SetBoxExtent(MarkerExtent);
 		Marker->SetRelativeLocation(FVector(0, 0, MarkerHeight));
-		Label->SetWorldSize(LabelSize);
-		Label->SetTextRenderColor(LabelColour);
-		Label->SetRelativeLocation(FVector(0, 0, LabelHeight));
-		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor(LabelColour), FVector(0, 0, LabelHeight));
 		SeatLight->SetRelativeLocation(FVector(0, 0, LightHeight));
 		SeatLight->SetAttenuationRadius(LightRadius);
 		SeatLight->SetIntensity(LightIntensity);

@@ -22,8 +22,6 @@ ACargoSlot::ACargoSlot()
 	Pad->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
 	Label->SetupAttachment(CargoRoot);
-	Label->SetHorizontalAlignment(EHTA_Center);
-	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 void ACargoSlot::Initialize(const FCargoSlotSpec& InSpec) { check(HasAuthority()); Spec = InSpec; }
 void ACargoSlot::BeginPlay()
@@ -40,9 +38,7 @@ void ACargoSlot::OnRep_Spec()
 	{
 		ShipVisuals::LoadBody(Pad, Spec.Mesh, FallbackScale);
 		Pad->SetRelativeScale3D(Pad->GetRelativeScale3D() * Spec.MeshScale);
-		Label->SetWorldSize(22.f);
-		Label->SetRelativeLocation(FVector(0, 0, Spec.bRack ? 180 : 35));
-		Label->SetRelativeRotation(FRotator(0, 180 - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, 22.f, 180.f, FLinearColor::White, FVector(0, 0, Spec.bRack ? 180 : 35));
 		bVisualsReady = true;
 	}
 	Refresh();
@@ -80,7 +76,7 @@ void ACargoSlot::Refresh()
 {
 	if (!bVisualsReady) { return; }
 	const FName Id = GetCrateId();
-	Label->SetText(FText::FromString(FString::Printf(TEXT("%s  %s"), *Spec.Id.ToString(), Id.IsNone() ? TEXT("empty") : *Id.ToString())));
+	Label->SetText(FText::FromString(FString::Printf(TEXT("%s\n%s"), *Spec.Id.ToString(), Id.IsNone() ? TEXT("empty") : *Id.ToString())));
 }
 FText ACargoSlot::GetInteractPrompt_Implementation() const
 {

@@ -26,8 +26,6 @@ ACargoCrate::ACargoCrate()
 	Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
 	Label->SetupAttachment(CargoRoot);
-	Label->SetHorizontalAlignment(EHTA_Center);
-	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HeatLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("HeatLight"));
 	HeatLight->SetupAttachment(CargoRoot);
 	HeatLight->SetIntensityUnits(ELightUnits::Candelas);
@@ -52,9 +50,7 @@ void ACargoCrate::OnRep_Spec()
 	if (!bVisualsReady)
 	{
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FallbackScale);
-		Label->SetWorldSize(LabelSize);
-		Label->SetRelativeLocation(FVector(0, 0, LabelHeight));
-		Label->SetRelativeRotation(FRotator(0, 180 - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, LabelSize, 180.f, FLinearColor::White, FVector(0, 0, LabelHeight));
 		HeatLight->SetRelativeLocation(FVector(0, 0, 60));
 		HeatLight->SetAttenuationRadius(180.f);
 		HeatLight->SetLightColor(FLinearColor::Red);

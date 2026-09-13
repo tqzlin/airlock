@@ -26,8 +26,6 @@ AShipLine::AShipLine()
 	Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
 	Label->SetupAttachment(ShipRoot);
-	Label->SetHorizontalAlignment(EHTA_Center);
-	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ShortLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("ShortLight"));
 	ShortLight->SetupAttachment(ShipRoot);
 	ShortLight->SetIntensityUnits(ELightUnits::Candelas);
@@ -59,10 +57,7 @@ void AShipLine::OnRep_Spec()
 	if (!bVisualsReady)
 	{
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FallbackScale);
-		Label->SetWorldSize(LabelSize);
-		Label->SetTextRenderColor(LabelColour);
-		Label->SetRelativeLocation(FVector(0, 0, LabelHeight));
-		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor(LabelColour), FVector(0, 0, LabelHeight));
 		ShortLight->SetRelativeLocation(FVector(0, 0, LightHeight));
 		ShortLight->SetAttenuationRadius(LightRadius);
 		ShortLight->SetLightColor(ShortColour);
@@ -106,7 +101,7 @@ void AShipLine::Refresh()
 {
 	if (!bVisualsReady) { return; }
 	const EShipLineFault Fault = GetFault();
-	Label->SetText(FText::FromString(FString::Printf(TEXT("%s  %s"), *Spec.Id.ToString(), FShipGraph::FaultName(Fault))));
+	Label->SetText(FText::FromString(FString::Printf(TEXT("%s\n%s"), *Spec.Id.ToString(), FShipGraph::FaultName(Fault))));
 	if (Fault == DisplayedFault) { return; }
 	DisplayedFault = Fault;
 	GetWorldTimerManager().ClearTimer(LeakRestartTimer);

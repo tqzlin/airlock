@@ -21,7 +21,6 @@ AFuelIntake::AFuelIntake()
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Body->SetCollisionResponseToAllChannels(ECR_Ignore); Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label")); Label->SetupAttachment(FuelRoot);
-	Label->SetHorizontalAlignment(EHTA_Center); Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 void AFuelIntake::Initialize(const FFuelFixtureSpec& InSpec) { check(HasAuthority()); Spec = InSpec; }
 void AFuelIntake::BeginPlay()
@@ -36,8 +35,8 @@ void AFuelIntake::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(16); Label->SetRelativeLocation(FVector(0,0,110));
-		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
+		ShipVisuals::ConfigureLabel(Label, 22.f, Spec.LabelYaw, FLinearColor::White,
+			FVector(0,0,110));
 		bVisualsReady = true;
 	}
 	Refresh();
@@ -69,8 +68,8 @@ void AFuelIntake::Refresh()
 {
 	const auto* S = GetFuelState(); if (!bVisualsReady || !S) { return; }
 	const FString Text = !S->BurningCrate.IsNone()
-		? FString::Printf(TEXT("INTAKE  %s %d s"), *S->BurningCrate.ToString(), S->BurnSecondsLeft)
-		: S->bBypassOpen ? TEXT("INTAKE  ready") : TEXT("INTAKE  bypass closed");
+		? FString::Printf(TEXT("INTAKE\n%s %d s"), *S->BurningCrate.ToString(), S->BurnSecondsLeft)
+		: S->bBypassOpen ? TEXT("INTAKE\nready") : TEXT("INTAKE\nbypass closed");
 	Label->SetText(FText::FromString(Text));
 }
 FText AFuelIntake::GetInteractPrompt_Implementation() const
