@@ -307,3 +307,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\verify-fuel.ps1 -Pro
 `AirlockFuelLeak`; the remaining actions and assertions follow item 10. It is an explicit diagnostic workaround,
 not a claim that the default acceptance command passes. Each proof stops PIE and checks both maps are clean.
 `-ProbePositions` returns the editor to StationHub. All MCP traffic uses port 8000; no editor on 8001 is touched.
+
+## Reviewer verification (Claude, 2026-09-12)
+
+Reviewed from Claude Code on the same checkout after Astra's process had exited (72 min, no GUI tool, the editor
+on port 8000 left on StationHub with no PIE and both maps clean).
+
+- **The open contract question above is answered in code, not in the proof.** Astra's arithmetic is right: with
+  90 units at leak start the ship is not short ten seconds later, so the one-shot follow-up correctly speaks the
+  still-good line and the brief's literal expectation could never pass. The fix (commit on the branch before the
+  merge) is a third captain call tied to the fuel rather than to a timer: `TickFuel` speaks
+  `Captain <Name> here. Reserve's gone - open the crude bypass and feed me casks, or we dock short.` once per
+  voyage on the first tick `FFuelSystem::IsShort(secondsRemaining)` turns true while no travel is pending
+  (`bFuelShortSpoken`, reset when the clock starts). In the proof that lands about 15 s into the open leak, which is
+  the "starts asking for crude" beat the design note wanted. `verify-fuel.ps1` waits up to 30 s for that line
+  instead of asserting the follow-up's text, and the `Airlock.Fuel.FollowupBranches` test counts it (1 for the two
+  leaking cases, 0 for the shut and bypass cases). Two things learnt on the way: a transient world's
+  `FTimerManager::Tick(10)` catches the looping fuel timer up but does not move the world clock, and a log
+  capture that counts by `StartsWith` never sees a captain line (they all begin `Captain <Name>:`), so the
+  assertion counts by `Contains`.
+- **Diff read** against the brief: the fuel model is pure and deterministic (leak and burn integrated per tick,
+  the cask burn as a 20 s timer that latches the +15 at the end, fouling every second cask, exhaustion latched
+  once with the 120 s late-dock extension); the set piece rides the captain timer and consumes like an incident
+  (forward jump fires, rewind never replays, a docking jump fires it before the docking caption); the three
+  fixtures are spawned from a code table with the same soft-mesh fallback as the modules; `ECargoState::Burned`
+  is additive and the M3-4/M3-5 strings are untouched. Nothing on the do-not-touch list changed and the five
+  protected travel functions are byte-identical.
+- **Merged tree**: M3-7 merged on top of this branch the same night (union conflicts in the game mode and the
+  tally struct only). Two pinned strings had to follow M3-7's renamed docking caption: the dock-jump test now
+  looks for `Docking at the refinery` and `verify-voyage-clock.ps1` for `Transition card: DOCKING - HALDER SOLAR
+  REFINERY` (commits 7c9f3f4, 881d390). No fuel assertion was weakened.
+- **Tests** on the merged tree: `Scripts\run-tests.bat Airlock` headless, **90 / 90** in 21 s.
+- **Proofs** on the merged tree (`main` at 881d390), one at a time, unedited except for the two strings above:
+
+| Proof | Result | Time |
+|---|---|---|
+| `verify-loop.ps1` | `LOOP OK` | 53 s |
+| `verify-ship-graph.ps1` | `GRAPH OK` | 73 s |
+| `verify-incidents.ps1` | `INCIDENTS OK` | 59 s |
+| `verify-voyage-clock.ps1` | `CLOCK OK` | 107 s |
+| `verify-level-pass.ps1` | `LEVEL OK` | 156 s |
+| `verify-cargo.ps1` | `CARGO OK` | 91 s |
+| `verify-atmosphere.ps1` | `ATMOSPHERE OK` | 126 s |
+| `verify-fuel.ps1` | `FUEL OK` (feed leak -> shut -> bypass -> burn C3/C1 -> clear injectors -> clean air, pay 270) | 150 s |
+| `verify-refinery.ps1` | `REFINERY OK` | 68 s |
+
+- **Captures reviewed** (`Saved\AgentCaptures\M3-6\`): `feed-leak` (`FEED VALVE  leak` in the valve's red light,
+  `Fuel leak - shut the feed valve` red at the top of the board; the steam itself is faint - M3-8), `bypass-open`
+  and `intake-burning` (`BYPASS` and `INTAKE  C3 12 s` counting down over the intake, the board down to the
+  unsecured casks), `injectors-fouled` (the Engines row and the hold prompt), `low-fuel` (the control board's
+  fuel line), `bridge-control-board`, `engineering-overview` (the three fixtures on the engineering wall; the
+  module's green flood washes the frame - M3-8), `hub-last-run-fuel` (`Last run:` with the soot fine).
+- **Reproduce** on `main`: the recipe in "Reproduce" above minus the branch switch; `verify-fuel.ps1` now exits 0
+  with its defaults (`-ShortFollowup` still exercises the follow-up's own short branch by setting fuel to 20).

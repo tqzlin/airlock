@@ -83,3 +83,18 @@ REFINERY OK: reset -> priority contract, 12 casks -> 2 intact -> refinery dock, 
   manifest - a "12 loose casks" summary row would read better than eight identical rows.
 - Balance: a Priority run solo means twelve carries in twenty minutes with six volatile casks warming after the
   calm; that is the tier that "only really pays crewed", by design, but it has not been playtested.
+
+## Merged-tree results (Claude, 2026-09-12, after the merge)
+
+- Merged into `main` (0b253ac) on top of M3-6 with union resolutions in `AirlockGameMode.cpp` (the fuel and
+  refinery additions sit side by side) and `FVoyageResult` (`CratesBurned`, `bLateDock`, `bHasFuelData` from
+  M3-6 next to `FuelSurplus` from M3-7). The enum rename from `Mining` to `MilkRun` reached the one file M3-6 had
+  added since the branch base (`CargoModel.h`).
+- Two smoke assertions were updated on purpose (they pinned the old voyage-type names); nothing else existing
+  changed. M3-5's exact-summary test kept passing because the `, fuel +N t` suffix lives on the `Voyage result:`
+  log line only, not in `FCargoModel::Summary`.
+- Tests on the merged tree: **90 / 90**. All nine proofs green on the merged tree (times in the M3-6 report's
+  reviewer section); `verify-refinery.ps1` **68 s**, `REFINERY OK: reset -> priority contract, 12 casks -> 2 intact
+  -> refinery dock, +20 t -> hub board -> empty run adds 0 -> reset`.
+- Editors: port 8000 on `Airlock\` (`main`, StationHub, no PIE); port 8001 on the worktree `..\Airlock-claude`
+  still on `claude/m3-7-refinery-dock` (merged) - switch it to a fresh branch before the next Claude task.
