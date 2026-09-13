@@ -224,7 +224,7 @@ public:
 		{
 			const FString Text=Log.Text();
 			Test->TestEqual(TEXT("Dock jump consumes leak"),Log.Count(TEXT("SetPiece FuelLeak at")),1);
-			Test->TestTrue(TEXT("Leak before docking caption"),Text.Find(TEXT("SetPiece FuelLeak at")) < Text.Find(TEXT("Docking now")));
+			Test->TestTrue(TEXT("Leak before docking caption"),Text.Find(TEXT("SetPiece FuelLeak at")) < Text.Find(TEXT("Docking at the refinery"))); // M3-7 renamed the docking caption
 			Test->TestFalse(TEXT("Docking ends voyage"),S.State->bVoyageActive); return true;
 		}
 		else if (Step == 1) { Test->TestTrue(TEXT("Forward jump opens leak"),S.State->Fuel.bFeedLeak); S.Mode->FuelCloseLeak(); S.Mode->SetVoyageSecondsRemaining(1200); }
@@ -251,14 +251,15 @@ public:
 				const FString Text=Log->Text();
 				const TCHAR* Expected[] = { TEXT("Shut that feed. We're still good"), TEXT("At this burn we dock short."), TEXT("Feed's shut. We're still good") };
 				if (Case<3) { Test->TestTrue(TEXT("Correct follow-up branch"),Text.Contains(Expected[Case])); }
-				// Review addition: only the 80-unit case is short here (the timer manager ticks the fuel once per Tick), and the captain calls for crude once.
-				Test->TestEqual(TEXT("Reserve call once the margin is gone"),Log->Count(TEXT("Reserve's gone")),Case==1?1:0);
 				else { Test->TestFalse(TEXT("Inactive follow-up suppressed"),Text.Contains(TEXT("We're still good")) || Text.Contains(TEXT("At this burn"))); }
 				Test->TestEqual(TEXT("Set piece consumed once even through console"),Log->Count(TEXT("SetPiece FuelLeak at")),1);
 				Test->TestEqual(TEXT("Console reopen logged separately"),Log->Count(TEXT("SetPiece FuelLeak (console)")),1);
 				TArray<FString> Lines; Text.ParseIntoArrayLines(Lines); int32 Followups=0;
 				for (const auto& L:Lines) { if (L.StartsWith(TEXT("Captain")) && (L.Contains(TEXT("We're still good")) || L.Contains(TEXT("At this burn")))) { ++Followups; } }
-				Test->TestEqual(TEXT("Follow-up once, or none after end"),Followups,Case==3?0:1); return true;
+				Test->TestEqual(TEXT("Follow-up once, or none after end"),Followups,Case==3?0:1);
+				// Review addition (M3-6): the leaking cases eat the reserve within the window and the captain calls for crude once; the shut and inactive cases never do.
+				int32 Reserve=0; for (const auto& L:Lines) { if (L.Contains(TEXT("Reserve's gone"))) { ++Reserve; } }
+				Test->TestEqual(TEXT("Reserve call once the margin is gone"),Reserve,Case<2?1:0); return true;
 			}
 		}
 		++Step; return false;
