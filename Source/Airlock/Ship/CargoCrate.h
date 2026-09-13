@@ -28,6 +28,8 @@ public:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> CargoRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UTextRenderComponent> Label;
+	/** Separate second line so heat colour never obscures the white cargo id. */
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UTextRenderComponent> StateLabel;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> HeatLight;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UParticleSystemComponent> VentFX;
 	UPROPERTY(EditDefaultsOnly, Category="Cargo|Visual") FVector FallbackScale = FVector(.8, .8, .8);
@@ -45,6 +47,7 @@ private:
 	void RestartVent();
 	void BindCargo();
 	void Refresh();
+	void RefreshLabel();
 	bool bVisualsReady = false;
 	bool bVenting = false;
 	bool bPuffing = false;

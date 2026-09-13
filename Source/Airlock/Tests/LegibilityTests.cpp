@@ -3,6 +3,8 @@
 #include "Ship/ShipVisuals.h"
 #include "Ship/ShipModule.h"
 #include "Ship/CargoLayouts.h"
+#include "Ship/CargoCrate.h"
+#include "Ship/CargoSlot.h"
 #include "Core/AirlockCharacter.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
@@ -137,6 +139,57 @@ bool FCargoLabelYawTest::RunTest(const FString& Parameters)
 		TestEqual(*Slot.Id.ToString(), Slot.LabelYaw, Slot.Transform.GetLocation().Y > 1560 ? -90.f : 90.f);
 		if (Slot.bRack) { TestEqual(TEXT("Rack faces north"), Slot.LabelYaw, 90.f); }
 	}
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrateLabelRulesTest, "Airlock.Legibility.CarriedDroppedRackedAndTerminalLabels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCrateLabelRulesTest::RunTest(const FString& Parameters)
+{
+	FLegibilityTestWorld Env;
+	auto* Crate = Env.Find<ACargoCrate>(TEXT("C2"));
+	auto* Rack = Env.Find<ACargoSlot>(TEXT("ColdRack"));
+	if (!TestNotNull(TEXT("Cask spawned"), Crate) || !TestNotNull(TEXT("Rack spawned"), Rack)) { return false; }
+	TestEqual(TEXT("White id on first line"), Crate->Label->Text.ToString(), FString(TEXT("C2")));
+	TestEqual(TEXT("Volatile state on second line"), Crate->StateLabel->Text.ToString(), FString(TEXT("Loose  0C")));
+	TestEqual(TEXT("Id height retained"), Crate->Label->GetRelativeLocation().Z, 95.0);
+	for (float Temperature : { 39.f, 40.f, 79.f, 80.f })
+	{
+		Env.Mode->CargoSetTemperature(TEXT("C2"), Temperature);
+		const FLinearColor Colour = Temperature >= 80 ? FLinearColor(1.f, .15f, .1f)
+			: Temperature >= 40 ? FLinearColor(1.f, .6f, .1f) : FLinearColor::White;
+		TestEqual(TEXT("Heat colour on state only"), Crate->StateLabel->TextRenderColor, Colour.ToFColor(true));
+		TestEqual(TEXT("Id stays white"), Crate->Label->TextRenderColor, FColor::White);
+	}
+	auto* Crew = Env.CrewAt(Crate->GetActorLocation() + FVector(-150, 0, 96));
+	Crew->SetActorRotation(FRotator(0, 37, 0));
+	Crew->ServerPickUp(Crate);
+	TestTrue(TEXT("Picked up through server verb"), Crew->CarriedCrate == Crate);
+	TestFalse(TEXT("Carried id hidden"), Crate->Label->IsVisible());
+	TestFalse(TEXT("Carried state hidden"), Crate->StateLabel->IsVisible());
+	Crew->ServerPutDown();
+	TestTrue(TEXT("Drop restores both lines"), Crate->Label->IsVisible() && Crate->StateLabel->IsVisible());
+	TestTrue(TEXT("Drop uses pawn yaw"), FMath::IsNearlyEqual(Crate->GetActorRotation().Yaw, 37.0));
+	TestTrue(TEXT("Drop retains world label facing"), FMath::IsNearlyEqual(Crate->Label->GetComponentRotation().Yaw, -90.0));
+	Crew->ServerPickUp(Crate);
+	Crew->SetActorLocation(Rack->GetActorLocation() + FVector(0, 150, 96));
+	Crew->ServerPlace(Rack);
+	TestTrue(TEXT("Placed through server verb"), Crate->GetCargoState()->State == ECargoState::Racked);
+	TestTrue(TEXT("Rack restores both lines"), Crate->Label->IsVisible() && Crate->StateLabel->IsVisible());
+	TestTrue(TEXT("Rack takes rack yaw"), FMath::IsNearlyEqual(Crate->GetActorRotation().Yaw, 90.0));
+	TestTrue(TEXT("Rack keeps id world facing"), FMath::IsNearlyEqual(Crate->Label->GetComponentRotation().Yaw, -90.0));
+	TestTrue(TEXT("Rack keeps state world facing"), FMath::IsNearlyEqual(Crate->StateLabel->GetComponentRotation().Yaw, -90.0));
+	// Replicated terminal snapshots exercise visuals without changing any model or gameplay helper.
+	auto Cargo = Env.State->Cargo;
+	auto* State = Cargo.FindByPredicate([](const auto& C) { return C.Id == TEXT("C2"); });
+	State->State = ECargoState::Vented; State->Temperature = 100;
+	Env.State->PublishCargo(Cargo);
+	TestTrue(TEXT("Vented label remains"), Crate->Label->IsVisible() && Crate->StateLabel->IsVisible());
+	TestEqual(TEXT("Vented state red"), Crate->StateLabel->TextRenderColor, FLinearColor(1.f, .15f, .1f).ToFColor(true));
+	State->State = ECargoState::Burned;
+	Env.State->PublishCargo(Cargo);
+	TestTrue(TEXT("Burned actor hidden"), Crate->IsHidden());
+	TestFalse(TEXT("Burned id hidden"), Crate->Label->IsVisible());
+	TestFalse(TEXT("Burned state hidden"), Crate->StateLabel->IsVisible());
 	return true;
 }
 #endif
