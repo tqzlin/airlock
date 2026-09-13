@@ -147,6 +147,12 @@ proof now asserts the `stepped +120 cm aside` line on both the ship and the hub.
   `set_properties` only changed memory. The nine regression proofs then failed on arrival positions until the ini
   was fixed by hand. The proof now snapshots the `[/Script/UnrealEd.LevelEditorPlaySettings]` section before it
   starts and writes it back in `finally`, after the in-memory restore.
+- **Interference with Astra's M3-8 run (my fault, 22:08).** While clearing my own stuck proof processes after the
+  two-client-mode mishap I stopped every `powershell.exe` whose command line contained `verify-`; one of them was the
+  Codex shell wrapper running Astra's `verify-fuel.ps1` on port 8000, which died with exit -1 two minutes in ("while
+  waiting for the injector hold" in Astra's transcript). Astra's editor was untouched and it re-ran. If the M3-8
+  report mentions a fuel proof that exited -1 unexpectedly, that was this, not the code. Rule from now on: filter
+  by checkout path (`Airlock-claude`) before stopping anything, never by script name.
 - `airlock.DevCheats` is process-wide: in a one-process PIE session the server's `airlock.DevCheats 0` also applies
   to the client's local helpers, which is fine because the gate is checked on the server anyway.
 - The client's hold capture faces +Y from the walkway (`AirlockLook 90`), which is the wrong way for the crate rows
