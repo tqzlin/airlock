@@ -136,6 +136,11 @@ public:
 	UFUNCTION(Exec) void AirlockScrub(FString Mode);
 	UFUNCTION(Exec) void AirlockAirSet(float Ppm);
 	UFUNCTION(Exec) void AirlockExpose(float Percent);
+	/** The Rig's fuel stock (M3-7): read it, set it for a proof, or delete the save and start over. */
+	UFUNCTION(Exec) void AirlockBaseFuel();
+	UFUNCTION(Exec) void AirlockBaseFuelSet(int32 Tonnes);
+	UFUNCTION(Exec) void AirlockSaveReset();
+	UFUNCTION(Server, Reliable) void ServerBaseFuel(int32 Mode, int32 Tonnes);
 	UFUNCTION(Server, Reliable) void ServerAirStatus();
 	UFUNCTION(Server, Reliable) void ServerScrubFromConsole(const FString& Mode);
 	UFUNCTION(Server, Reliable) void ServerAirSet(float Ppm);

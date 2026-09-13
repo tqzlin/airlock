@@ -234,6 +234,7 @@ void AAirlockPlayerController::OpenVoyageBoard()
 	}
 	BoardWidget->SetOffers(Voyages->GetOfferedVoyages(GS->DaySeed));
 	BoardWidget->SetLastVoyageResult(GS->LastVoyageResult, GS->bHasLastVoyageResult);
+	BoardWidget->SetBaseFuel(GS->BaseFuelTonnes, GS->RunsCompleted, GS->bHasLastVoyageResult ? GS->LastVoyageResult.FuelSurplus : 0, GS->bHasLastVoyageResult);
 	BoardWidget->OnVoyageChosen.AddDynamic(this, &AAirlockPlayerController::HandleVoyageChosen);
 	BoardWidget->OnClosed.AddDynamic(this, &AAirlockPlayerController::HandleBoardClosed);
 	BoardWidget->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));
@@ -520,6 +521,21 @@ void AAirlockPlayerController::ServerCargoTally_Implementation()
 	else { UE_LOG(LogAirlock, Log, TEXT("Tally rejected: no game mode")); }
 }
 
+void AAirlockPlayerController::AirlockBaseFuel() { ServerBaseFuel(0, 0); }
+void AAirlockPlayerController::AirlockBaseFuelSet(int32 Tonnes) { ServerBaseFuel(1, Tonnes); }
+void AAirlockPlayerController::AirlockSaveReset() { ServerBaseFuel(2, 0); }
+void AAirlockPlayerController::ServerBaseFuel_Implementation(int32 Mode, int32 Tonnes)
+{
+	UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
+	if (!Voyages) { UE_LOG(LogAirlock, Log, TEXT("Base fuel rejected: no voyage subsystem")); return; }
+	if (Mode == 1) { Voyages->SetBaseFuelTonnes(Tonnes); }
+	else if (Mode == 2) { Voyages->ResetSave(); }
+	if (AAirlockGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr)
+	{
+		GS->BaseFuelTonnes = Voyages->GetBaseFuelTonnes(); GS->RunsCompleted = Voyages->GetRunsCompleted(); GS->ForceNetUpdate();
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Base fuel %d t, runs %d"), Voyages->GetBaseFuelTonnes(), Voyages->GetRunsCompleted());
+}
 void AAirlockPlayerController::AirlockAir() { ServerAirStatus(); }
 void AAirlockPlayerController::AirlockScrub(FString Mode) { ServerScrubFromConsole(Mode); }
 void AAirlockPlayerController::AirlockAirSet(float Ppm) { ServerAirSet(Ppm); }

@@ -178,6 +178,8 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 	Result.Pay = PayPerIntactCrate * Result.CratesIntact
 		+ (Result.CratesVented == 0 && Result.CratesLoose == 0 ? CleanManifestBonus : 0)
 		+ FMath::RoundToInt(Result.ShipCondition * HullBonusPerPoint);
+	Result.FuelCredit = FuelCreditPerIntactCask * Result.CratesIntact;
+	Result.FuelSurplus = SurplusPerIntactCask * Result.CratesIntact;
 	if (Air)
 	{
 		Result.DockPpm = Air->Ppm;

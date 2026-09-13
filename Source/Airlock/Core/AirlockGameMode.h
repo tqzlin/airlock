@@ -8,6 +8,7 @@
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
+#include "Ship/CargoLayouts.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -87,6 +88,9 @@ private:
 	void SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* Pawn = nullptr);
 	void BuildCargo();
 	void PublishCargo();
+	/** The manifest this section spawned: the booked tier's (M3-7) or the four-cask default. */
+	FCargoLayout ActiveCargoLayout;
+	void BuildStationSigns();
 	FTimerHandle ShipGraphTimer;
 	void BuildShipGraph();
 	void TickShipGraph();

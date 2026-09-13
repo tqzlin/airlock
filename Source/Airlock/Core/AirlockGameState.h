@@ -69,6 +69,9 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_Cargo) TArray<FCargoCrateState> Cargo;
 	UPROPERTY(Replicated) FVoyageResult LastVoyageResult;
 	UPROPERTY(Replicated) bool bHasLastVoyageResult = false;
+	/** The Rig's fuel stock and run count, copied from the save on the hub (M3-7). */
+	UPROPERTY(Replicated) int32 BaseFuelTonnes = 0;
+	UPROPERTY(Replicated) int32 RunsCompleted = 0;
 	void PublishCargo(const TArray<FCargoCrateState>& InCargo);
 	UFUNCTION() void OnRep_Cargo();
 	UPROPERTY(ReplicatedUsing=OnRep_Atmosphere) FAtmosphereState Atmosphere;
