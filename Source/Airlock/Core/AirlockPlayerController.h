@@ -107,6 +107,8 @@ public:
 	UFUNCTION(Exec) void AirlockRepairModule(FName ModuleId, float Amount);
 	UFUNCTION(Exec) void AirlockShipStatus();
 	UFUNCTION(Exec) void AirlockHold(FString TargetLabel);
+	UFUNCTION(Exec) void AirlockPress(FString TargetLabel);
+	UFUNCTION(Server, Reliable) void ServerPress(const FString& TargetLabel);
 	UFUNCTION(Exec) void AirlockRelease();
 	UFUNCTION(Server, Reliable) void ServerShipFault(FName LineId, const FString& Fault);
 	UFUNCTION(Server, Reliable) void ServerAdjustShipModule(FName ModuleId, float Amount, bool bRepair);
