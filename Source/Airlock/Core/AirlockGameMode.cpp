@@ -32,6 +32,7 @@
 #include "Ship/RefineryLayouts.h"
 #include "Ship/FloorFixture.h"
 #include "Ship/Still.h"
+#include "Ship/Spill.h"
 #include "Ship/StillControl.h"
 #include "HAL/IConsoleManager.h"
 
@@ -1405,7 +1406,33 @@ void AAirlockGameMode::PublishFloorHazards()
 		Spill.Litres = FMath::FloorToFloat(Spill.Litres);
 		Spill.RadiusCm = FMath::FloorToFloat(Spill.RadiusCm);
 	}
+	const TArray<FFloorSpillState> Old = GS->FloorHazards.Spills;
 	GS->PublishFloorHazards(Mirror);
+	for (const auto& Spill : Mirror.Spills)
+	{
+		if (Old.ContainsByPredicate([&Spill](const FFloorSpillState& S) { return S.Id == Spill.Id; })) { continue; }
+		FActorSpawnParameters Params;
+		Params.Name = Spill.Id; Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const FTransform Transform(Spill.Location);
+		if (auto* Actor = GetWorld()->SpawnActor<ASpill>(ASpill::StaticClass(), Transform, Params))
+		{
+			Actor->Initialize(Spill.Id);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spill.Id.ToString()); Actor->SetFolderPath(TEXT("Floor/Spills"));
+#endif
+			Actor->FinishSpawning(Transform);
+		}
+	}
+	for (const auto& Spill : Old)
+	{
+		if (Mirror.Spills.ContainsByPredicate([&Spill](const FFloorSpillState& S) { return S.Id == Spill.Id; })) { continue; }
+		for (TActorIterator<ASpill> It(GetWorld()); It; ++It)
+		{
+			if (It->GetSpillId() == Spill.Id) { It->Destroy(); break; }
+		}
+		UE_LOG(LogAirlock, Log, TEXT("Spill %s gone"), *Spill.Id.ToString());
+	}
 }
 void AAirlockGameMode::PublishFloorCriticals()
 {
