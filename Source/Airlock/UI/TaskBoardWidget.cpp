@@ -9,11 +9,22 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Core/AirlockGameState.h"
+#include "Ship/FuelLayouts.h"
 
 TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air)
+	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air, const FFuelState* Fuel)
 {
 	TArray<FTaskBoardRow> Rows;
+	const FFuelRates FuelRates;
+	if (Fuel && Fuel->bFeedLeak)
+	{ Rows.Add({ NSLOCTEXT("Airlock", "FuelLeakTask", "Fuel leak - shut the feed valve"), true }); }
+	else if (Fuel && Fuel->Units < FuelRates.Capacity * FuelRates.LowFuelPercent / 100.f && Fuel->BurningCrate.IsNone())
+	{
+		const FText Pattern = Fuel->bBypassOpen
+			? NSLOCTEXT("Airlock", "FuelIntakeTask", "Fuel {0}% - feed casks to the intake")
+			: NSLOCTEXT("Airlock", "FuelBypassTask", "Fuel {0}% - open the bypass and feed casks");
+		Rows.Add({ FText::Format(Pattern, FText::AsNumber(FMath::FloorToInt(Fuel->Units))), Fuel->Units < FuelRates.Capacity * FuelRates.CriticalFuelPercent / 100.f });
+	}
 	if (Air && Air->Ppm >= FAtmosphereRates().WarnPpm)
 	{
 		const FText Action = Air->bScrubDisabled ? NSLOCTEXT("Airlock", "AirTaskDisabled", "repair life support")
@@ -21,6 +32,7 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "AirTask", "Hold air {0} ppm - {1}"),
 			FText::AsNumber(FMath::FloorToInt(Air->Ppm)), Action), Air->Ppm >= FAtmosphereRates().DangerPpm });
 	}
+	if (Fuel && Fuel->bInjectorsFouled) { Rows.Add({ NSLOCTEXT("Airlock", "InjectorTask", "Clear the injectors"), false }); }
 	const float Warn = FCargoRates().WarnTemperature;
 	TArray<FCargoCrateState> Heating;
 	for (const auto& Crate : Cargo)
@@ -137,7 +149,7 @@ void UTaskBoardWidget::RefreshRows()
 	TaskRows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
-	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr))
+	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr, FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(Row.Text);

@@ -16,7 +16,7 @@ bool FSetPieceScheduleTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Deterministic time"), A[0].AtSeconds, B[0].AtSeconds);
 		TestEqual(TEXT("Deterministic line"), A[0].CaptainLine.ToString(), B[0].CaptainLine.ToString());
 		FRandomStream Random(Seed ^ 0x5E7B1ECE);
-		TestEqual(TEXT("Time is the first salted draw"), A[0].AtSeconds, Spec.DurationSeconds * Random.FRandRange(.4f,.55f));
+		TestEqual(TEXT("Time is the first salted draw"), A[0].AtSeconds, static_cast<float>(Spec.DurationSeconds * Random.FRandRange(.4f,.55f)));
 		const TCHAR* Expected[] = { TEXT("Feed valve's failed"), TEXT("Fuel line's split"), TEXT("The Rig short-filled") };
 		TestTrue(TEXT("Cause is the second draw"), A[0].CaptainLine.ToString().Contains(Expected[Random.RandRange(0,2)]));
 		TestTrue(TEXT("Captain named"), A[0].CaptainLine.ToString().Contains(TEXT("Captain TestCaptain here.")));
@@ -25,3 +25,4 @@ bool FSetPieceScheduleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("All three causes"), Causes.Num(), 3); return true;
 }
 #endif
+

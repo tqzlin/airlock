@@ -10,6 +10,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Core/AirlockGameState.h"
 #include "Ship/ControlStation.h"
+#include "Ship/FuelLayouts.h"
 
 namespace
 {
@@ -77,6 +78,9 @@ TSharedRef<SWidget> UControlBoardWidget::RebuildWidget()
 		AirText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Air"));
 		AirText->SetColorAndOpacity(FSlateColor(HeaderColour)); AirText->SetFont(ClockFont);
 		Contents->AddChildToVerticalBox(AirText)->SetPadding(FMargin(0, 0, 0, 8));
+		FuelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Fuel"));
+		FuelText->SetColorAndOpacity(FSlateColor(HeaderColour)); FuelText->SetFont(ClockFont); FuelText->SetAutoWrapText(true);
+		Contents->AddChildToVerticalBox(FuelText)->SetPadding(FMargin(0, 0, 0, 8));
 		Rows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Rows"));
 		Contents->AddChildToVerticalBox(Rows);
 		UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Footer"));
@@ -153,6 +157,15 @@ void UControlBoardWidget::RefreshRows()
 		AirText->SetVisibility(State->AirHasAtmosphere() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		AirText->SetText(FText::FromString(FString::Printf(TEXT("AIR %d ppm  SCRUBBERS %s%s"), FMath::FloorToInt(State->Atmosphere.Ppm),
 			FShipAtmosphere::ModeName(State->Atmosphere.ScrubMode), State->Atmosphere.bBrownout ? TEXT(" BROWNOUT") : TEXT(""))));
+	}
+	if (FuelText)
+	{
+		FuelText->SetVisibility(FuelLayouts::Find(State->CurrentSectionId) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		const auto& Fuel = State->Fuel;
+		FString Text = FString::Printf(TEXT("FUEL %d%%  BYPASS %s"), FMath::FloorToInt(Fuel.Units), Fuel.bBypassOpen ? TEXT("open") : TEXT("closed"));
+		if (!Fuel.BurningCrate.IsNone()) { Text += FString::Printf(TEXT("  BURNING %s %d s"), *Fuel.BurningCrate.ToString(), Fuel.BurnSecondsLeft); }
+		if (Fuel.bInjectorsFouled) { Text += TEXT("  INJECTORS FOULED"); }
+		FuelText->SetText(FText::FromString(Text));
 	}
 	for (const FControlBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines))
 	{
