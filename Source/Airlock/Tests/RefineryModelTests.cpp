@@ -285,4 +285,110 @@ bool FRefineryTickTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Identical ppm accumulation"), LargePpm, Small.Ppm);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryPressureTest, "Airlock.Refinery.Model.PressureActualPeaksWithDepletingCharge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryPressureTest::RunTest(const FString& Parameters)
+{
+	for (int32 Vent : { 11, 4 })
+	{
+		FRefineryModel M; M.Build(1, Manifest(1)); Recipe(M, 8, 10, Vent); M.LoadHopper(StillId, TEXT("C1"));
+		FRun Run; float Peak = 1.f;
+		for (int32 I = 0; I < 400; ++I)
+		{
+			Run.Advance(M, 1); Peak = FMath::Max(Peak, M.FindStill(StillId)->PressureBar);
+			TestTrue(TEXT("Pressure never below floor"), M.FindStill(StillId)->PressureBar >= 1.f);
+		}
+		TestEqual(TEXT("No pop"), Run.Count(ERefineryEvent::Pop), 0);
+		TestEqual(TEXT("Recipe completes"), M.State().CasksRefined, 1);
+		if (Vent == 11) { TestEqual(TEXT("Recipe peak about 1.6 bar"), Peak, 1.56f, 0.01f); }
+		else
+		{
+			// Brief's 2.8 bar equilibrium assumes constant full charge. This batch empties as it feeds.
+			TestEqual(TEXT("Actual vent 20 peak"), Peak, 2.253f, 0.01f);
+			TestTrue(TEXT("Never reaches the requested warning band"), Peak < M.Rates.WarnBar);
+			AddInfo(FString::Printf(TEXT("Vent 20%% peaks at %.4f bar, below WarnBar 2.5 (depleting charge)"), Peak));
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryVentTest, "Airlock.Refinery.Model.VentExcessNeedsBoilingAndScales",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryVentTest::RunTest(const FString& Parameters)
+{
+	float Ppm[3]; const int32 Vents[] = { 10, 13, 18 };
+	for (int32 I = 0; I < 3; ++I)
+	{
+		FRefineryModel M; M.Build(1, Manifest(1)); Recipe(M, 8, 0, Vents[I]);
+		FRun Empty; Empty.Advance(M, 4);
+		TestEqual(TEXT("Empty hot still does not vent gas"), Empty.Ppm, 0.f);
+		M.LoadHopper(StillId, TEXT("C1")); FRun Boil; Boil.Advance(M, 4); Ppm[I] = Boil.Ppm;
+		TestEqual(TEXT("No feed gas cut"), M.State().TotalGasL, 0.f);
+		M.Rebuild(); M.SetKnob(StillId, ERefineryKnob::Vent, Vents[I]); M.LoadHopper(StillId, TEXT("C1"));
+		FRun Cold; Cold.Advance(M, 4);
+		TestEqual(TEXT("Cold charge does not vent excess"), Cold.Ppm, 0.f);
+	}
+	TestEqual(TEXT("50 percent adds no vent ppm"), Ppm[0], 0.f);
+	TestTrue(TEXT("65 percent fumes"), Ppm[1] > 0.f);
+	TestTrue(TEXT("90 percent fumes more"), Ppm[2] > Ppm[1]);
+	TestEqual(TEXT("Six times the excess"), Ppm[2], Ppm[1] * 6.f, 0.001f);
+	TestEqual(TEXT("Boiling-scaled vent 90"), Ppm[2], 7.90f, 0.03f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryPopTest, "Airlock.Refinery.Model.PopOnceSpillRetainedProductAndReset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryPopTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(3)); Recipe(M, 10, 10, 2);
+	TestFalse(TEXT("Unknown reset"), M.ClearPop(TEXT("Missing")));
+	TestFalse(TEXT("Idle reset refused"), M.ClearPop(StillId));
+	M.LoadHopper(StillId, TEXT("C1")); FRun Run; Run.Advance(M, 1);
+	TestFalse(TEXT("Running reset refused"), M.ClearPop(StillId));
+	float RedSeconds = 0.f; int32 Ticks = 1;
+	for (; Ticks < 400 && M.State().Pops == 0; ++Ticks)
+	{
+		const float BeforePpm = Run.Ppm, BeforeGas = M.State().TotalGasL;
+		Run.Advance(M, 1);
+		if (M.FindStill(StillId)->PressureBar >= M.Rates.WarnBar) { RedSeconds += 0.25f; }
+		if (M.State().Pops > 0)
+		{
+			TestEqual(TEXT("Pop adds exactly 60 beyond slice gas"), Run.Ppm - BeforePpm
+				- (M.State().TotalGasL - BeforeGas) * M.Rates.RoomPpmPerGasL, 60.f, 0.001f);
+		}
+	}
+	TestEqual(TEXT("Pop at 16.5 s"), Ticks, 66);
+	TestEqual(TEXT("One pop event"), Run.Count(ERefineryEvent::Pop), 1);
+	TestEqual(TEXT("One spill event"), Run.Count(ERefineryEvent::Spill), 1);
+	TestEqual(TEXT("Pop first"), Run.Events[0].Type, ERefineryEvent::Pop);
+	TestEqual(TEXT("Spill follows"), Run.Events[1].Type, ERefineryEvent::Spill);
+	TestEqual(TEXT("Pop spill identity"), Run.Events[1].CaskId, FName(TEXT("C1")));
+	TestEqual(TEXT("300 L spill"), Run.Events[1].Litres, 300.f);
+	TestEqual(TEXT("Lost cask once"), M.State().CasksLost, 1);
+	TestEqual(TEXT("Unfed charge cleared"), M.FindStill(StillId)->ChargeL, 0.f);
+	TestTrue(TEXT("Cask cleared"), M.FindStill(StillId)->CurrentCask.IsNone());
+	TestEqual(TEXT("Popped"), M.FindStill(StillId)->Status, EStillStatus::Popped);
+	TestEqual(TEXT("Pressure reset"), M.FindStill(StillId)->PressureBar, 1.f);
+	TestEqual(TEXT("Flood timer reset"), M.FindStill(StillId)->FloodSeconds, 0.f);
+	TestEqual(TEXT("Warning only 5.5 s before pop"), RedSeconds, 5.5f);
+	AddInfo(TEXT("Heat 50% / vent 10% pops at 16.5 s; only 5.5 s observed in warning band, not tens of seconds."));
+	const float Tank = M.State().TankDieselL, Gas = M.State().TotalGasL, Ppm = Run.Ppm;
+	M.SetKnob(StillId, ERefineryKnob::Feed, 18);
+	TestTrue(TEXT("Queue while popped"), M.LoadHopper(StillId, TEXT("C2")));
+	Run.Advance(M, 400);
+	TestEqual(TEXT("Popped still never feeds or emits again"), Run.Events.Num(), 2);
+	TestEqual(TEXT("Popped ppm stops"), Run.Ppm, Ppm);
+	TestEqual(TEXT("Tank survives pop"), M.State().TankDieselL, Tank);
+	TestEqual(TEXT("Processed gas survives pop"), M.State().TotalGasL, Gas);
+	const FStillState Popped = *M.FindStill(StillId);
+	TestTrue(TEXT("Clear pop accepted"), M.ClearPop(StillId));
+	FStillState Expected = Popped; Expected.Status = EStillStatus::Idle; Expected.PressureBar = 1.f;
+	TestTrue(TEXT("Reset changes only status and pressure"), *M.FindStill(StillId) == Expected);
+	M.SetKnob(StillId, ERefineryKnob::Feed, 10); M.SetKnob(StillId, ERefineryKnob::Vent, 11);
+	Run.Advance(M, 1);
+	TestEqual(TEXT("Queued cask resumes"), M.FindStill(StillId)->CurrentCask, FName(TEXT("C2")));
+	TestEqual(TEXT("Resumed charge"), M.FindStill(StillId)->ChargeL, 997.5f);
+	return true;
+}
 #endif

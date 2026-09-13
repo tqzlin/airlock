@@ -132,6 +132,13 @@ bool FRefineryModel::Calibrate(FName Still)
 	S->Calibration = 1.f; return true;
 }
 
+bool FRefineryModel::ClearPop(FName Still)
+{
+	FStillState* S = MutableStill(Still);
+	if (!S || S->Status != EStillStatus::Popped) { return false; }
+	S->Status = EStillStatus::Idle; S->PressureBar = Rates.PressureFloorBar; return true;
+}
+
 bool FRefineryModel::Tick(float DeltaSeconds, float RoomPpm, float& OutRoomPpm, TArray<FRefineryEvent>& OutEvents)
 {
 	OutRoomPpm = 0.f;
@@ -152,6 +159,7 @@ void FRefineryModel::TickStill(FStillState& S, float Dt, float RoomPpm, float& O
 {
 	const float Heat = static_cast<float>(S.HeatSteps) / Rates.KnobSteps;
 	const float Feed = static_cast<float>(S.FeedSteps) / Rates.KnobSteps;
+	const float Vent = static_cast<float>(S.VentSteps) / Rates.KnobSteps;
 
 	// 1. The separator takes a cask even at feed zero: loaded preheating does not drift the trap.
 	if (S.Status == EStillStatus::Idle || (S.Status == EStillStatus::Running && S.ChargeL == 0.f))
@@ -202,6 +210,29 @@ void FRefineryModel::TickStill(FStillState& S, float Dt, float RoomPpm, float& O
 		}
 	}
 	else { S.FloodSeconds = 0.f; }
+
+	// 5. Gain uses remaining charge and the updated bath, then the pressure-dependent valve bleeds.
+	const bool Boiling = S.ChargeL > 0.f && S.TempK > Rates.BoilStartK;
+	if (Boiling)
+	{
+		S.PressureBar += Rates.PressureGain * (S.TempK - Rates.BoilStartK) * (S.ChargeL / Rates.CaskLitres)
+			* (Fed > 0.f ? 1.f : 0.3f) * Dt;
+		OutRoomPpm += Rates.RoomPpmPerVentExcess * FMath::Max(0.f, Vent - Rates.TrapLimit)
+			* FMath::Clamp((S.TempK - Rates.BoilStartK) / 100.f, 0.f, 1.f) * Dt;
+	}
+	S.PressureBar = FMath::Max(Rates.PressureFloorBar,
+		S.PressureBar - Vent * Rates.VentBleedPerS * (S.PressureBar - Rates.PressureFloorBar) * Dt);
+	if (S.PressureBar >= Rates.PopBar)
+	{
+		OutEvents.Add(Event(ERefineryEvent::Pop, S));
+		S.Status = EStillStatus::Popped; S.PressureBar = Rates.PressureFloorBar;
+		OutRoomPpm += Rates.PopPpm; ++Floor.Pops;
+		FRefineryEvent Spill = Event(ERefineryEvent::Spill, S);
+		Spill.Litres = FMath::Min(S.ChargeL, Rates.PopSpillL);
+		OutEvents.Add(Spill); Floor.SpilledL += Spill.Litres; ++Floor.Spills;
+		if (!S.CurrentCask.IsNone()) { ++Floor.CasksLost; }
+		S.ChargeL = 0.f; S.CurrentCask = NAME_None;
+	}
 
 	// 8. Drift is charged only for a slice that actually processed crude.
 	if (Fed > 0.f) { S.Calibration = FMath::Max(0.f, S.Calibration - Rates.CalDriftPerS * Dt); }
