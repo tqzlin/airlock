@@ -24,6 +24,7 @@ public:
 	AFloorFixture();
 	void Initialize(const FFloorFixtureSpec& InSpec);
 	FName GetFixtureId() const { return Spec.Id; }
+	const FFloorFixtureSpec& GetSpec() const { return Spec; }
 	EFloorFixtureKind GetKind() const { return Spec.Kind; }
 	/** Server side: the label's second line for fixtures the refinery state does not describe (the bunk, the drain). */
 	void SetLine2(const FString& Line2);
@@ -40,6 +41,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Floor|Visual") FVector FallbackScale = FVector(1, 1, 1.5);
 
 protected:
+	virtual void Refresh();
+	TWeakObjectPtr<AAirlockGameState> FloorState;
+	bool bVisualsReady = false;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -48,11 +52,8 @@ private:
 	UPROPERTY(ReplicatedUsing=OnRep_Line2) FString Line2Override;
 	UFUNCTION() void OnRep_Spec();
 	UFUNCTION() void OnRep_Line2();
-	void Refresh();
 	/** Binds the game state's change event (retried by timer until the state has replicated). */
 	void BindState();
-	TWeakObjectPtr<AAirlockGameState> FloorState;
 	FDelegateHandle StateChangedHandle;
 	FTimerHandle BindTimer;
-	bool bVisualsReady = false;
 };

@@ -31,6 +31,7 @@
 #include "Voyage/FloorSchedule.h"
 #include "Ship/RefineryLayouts.h"
 #include "Ship/FloorFixture.h"
+#include "Ship/Still.h"
 #include "HAL/IConsoleManager.h"
 
 /** The one switch behind every Airlock* console helper (M4-1). On wherever an editor is compiled in (PIE, -game from the editor binary); off in every packaged build until an operator sets it (-ExecCmds="airlock.DevCheats 1" or [ConsoleVariables]). */
@@ -497,7 +498,7 @@ void AAirlockGameMode::BuildFloorFixtures()
 		Params.Name = Spec.Id;
 		Params.bDeferConstruction = true;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		if (auto* Fixture = GetWorld()->SpawnActor<AFloorFixture>(AFloorFixture::StaticClass(), Spec.Transform, Params))
+		if (auto* Fixture = GetWorld()->SpawnActor<AFloorFixture>(Spec.Kind == EFloorFixtureKind::Still ? AStill::StaticClass() : AFloorFixture::StaticClass(), Spec.Transform, Params))
 		{
 			Fixture->Initialize(Spec);
 #if WITH_EDITOR
@@ -1158,12 +1159,14 @@ void AAirlockGameMode::PublishRefinery()
 		if ((S.PressureBar >= Rates.WarnBar) != bWasHigh)
 		{
 			UE_LOG(LogAirlock, Log, TEXT("Still %s pressure %.2f bar - %s"), *Id, S.PressureBar, bWasHigh ? TEXT("back under the warning band") : TEXT("warning band"));
+			if (!bWasHigh) { SpeakFloorLine(TEXT("Pressure"), FText::Format(NSLOCTEXT("Airlock", "OkaforPressure", "Pressure on {0} - vent it before the relief goes."), FText::FromString(Id.Replace(TEXT("_"), TEXT(" "))))); }
 		}
 		if (Old && Old->bFouled != S.bFouled) { UE_LOG(LogAirlock, Log, TEXT("Still %s %s"), *Id, S.bFouled ? TEXT("fouled") : TEXT("clean")); }
 		const bool bWasDrifted = Old && Old->Calibration < Rates.CalWarn;
 		if ((S.Calibration < Rates.CalWarn) != bWasDrifted)
 		{
 			UE_LOG(LogAirlock, Log, TEXT("Still %s calibration %d%% - %s"), *Id, FMath::FloorToInt(S.Calibration * 100.f), bWasDrifted ? TEXT("calibrated") : TEXT("drifted"));
+			if (!bWasDrifted) { SpeakFloorLine(TEXT("Drift"), FText::Format(NSLOCTEXT("Airlock", "OkaforDrift", "{0}'s trap has drifted - you're losing the cut. Calibrate it."), FText::FromString(Id.Replace(TEXT("_"), TEXT(" "))))); }
 		}
 	}
 	if (FMath::FloorToInt(GS->Refinery.TankDieselL / 100.f) != FMath::FloorToInt(Mirror.TankDieselL / 100.f))
