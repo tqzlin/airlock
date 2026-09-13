@@ -191,7 +191,7 @@ try {
     if ($elapsed -lt 30) { Start-Sleep -Seconds ([int](30 - $elapsed)) }
     $loadAt = [DateTime]::UtcNow
     Send-FloorCommand 'AirlockStillLoad Still_1 C1'
-    $null = Wait-FloorProofLine ': Refinery Still_1 loaded C1 (hopper 1/3)' 10 $loadAt
+    $null = Wait-FloorProofLine ': Refinery Still_1 loaded C1' 10 $loadAt '(hopper 1/3)'
     $null = Wait-FloorProofLine ': Cargo C1 Loaded' 10 $loadAt
     $null = Wait-FloorProofLine ': Still Still_1 Running cask=C1' 10 $loadAt
     Send-FloorCommand 'AirlockWarp -5800 1500 116'
