@@ -39,6 +39,7 @@ void ACargoSlot::OnRep_Spec()
 	if (!bVisualsReady)
 	{
 		ShipVisuals::LoadBody(Pad, Spec.Mesh, FallbackScale);
+		Pad->SetRelativeScale3D(Pad->GetRelativeScale3D() * Spec.MeshScale);
 		Label->SetWorldSize(22.f);
 		Label->SetRelativeLocation(FVector(0, 0, Spec.bRack ? 180 : 35));
 		Label->SetRelativeRotation(FRotator(0, 180 - Spec.Transform.Rotator().Yaw, 0));

@@ -44,7 +44,7 @@ USTRUCT()
 struct AIRLOCK_API FVoyageResult
 {
 	GENERATED_BODY()
-	UPROPERTY() EVoyageType Type = EVoyageType::Mining;
+	UPROPERTY() EVoyageType Type = EVoyageType::MilkRun;
 	UPROPERTY() int32 Seed = 0;
 	UPROPERTY() int32 CratesTotal = 0;
 	UPROPERTY() int32 CratesIntact = 0;
@@ -56,6 +56,9 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() float DockPpm = -1.f;
 	UPROPERTY() int32 Blackouts = 0;
 	UPROPERTY() bool bCleanAir = false;
+	/** Refined methane the refinery credits for the intact casks, and what is left after the trip home (M3-7). */
+	UPROPERTY() int32 FuelCredit = 0;
+	UPROPERTY() int32 FuelSurplus = 0;
 	UPROPERTY() bool bLateDock = false;
 	/** Preserves pre-fuel summary strings when Tally is called without fuel data. */
 	UPROPERTY() bool bHasFuelData = false;
@@ -79,6 +82,8 @@ public:
 	static constexpr int32 LateDockFine = 100;
 	static constexpr int32 CleanManifestBonus = 150;
 	static constexpr float HullBonusPerPoint = 2.f;
+	static constexpr int32 FuelCreditPerIntactCask = 15;
+	static constexpr int32 SurplusPerIntactCask = 10;
 	void Build(const FCargoLayout& Layout);
 	bool Tick(float DeltaSeconds, double VoyageElapsedSeconds);
 	void SetRackCoolFactor(float Factor);

@@ -33,6 +33,9 @@ public:
 	void SetStatus(const FText& InStatus);
 	void SetLastVoyageResult(const FVoyageResult& Result, bool bHasResult);
 	static FText DescribeResult(const FVoyageResult& Result);
+	/** The Rig's stock line above the offers (M3-7). */
+	void SetBaseFuel(int32 Tonnes, int32 Runs, int32 SurplusThisRun, bool bHasResult);
+	static FText DescribeBase(int32 Tonnes, int32 Runs, int32 SurplusThisRun, bool bHasResult);
 
 	UPROPERTY(BlueprintAssignable, Category = "Airlock|Voyage")
 	FOnVoyageChosen OnVoyageChosen;
@@ -51,6 +54,7 @@ protected:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Title;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ResultLabel;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> BaseLabel;
 	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> OfferButtons;
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> OfferLabels;
 	UPROPERTY(Transient) TObjectPtr<UButton> CloseButton;
@@ -58,6 +62,10 @@ protected:
 	UPROPERTY(Transient) TArray<FVoyageSpec> Offers;
 	FVoyageResult LastResult;
 	bool bHasLastResult = false;
+	int32 BaseFuelTonnes = 0;
+	int32 RunsCompleted = 0;
+	int32 SurplusThisRun = 0;
+	bool bHasBase = false;
 
 	UFUNCTION() void HandleOffer0();
 	UFUNCTION() void HandleOffer1();

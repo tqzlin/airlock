@@ -5,13 +5,13 @@
 #include "CoreMinimal.h"
 #include "VoyageTypes.generated.h"
 
-/** The three MVP voyage archetypes. Each is an instanced ~20-minute trip on an NPC-captained ship. */
+/** The three contract tiers of the refining run (M3-7): the same ~20-minute NPC-captained trip in three sizes. */
 UENUM(BlueprintType)
 enum class EVoyageType : uint8
 {
-	Mining		UMETA(DisplayName = "Mining run"),
-	Pirates		UMETA(DisplayName = "Pirate interdiction"),
-	Derelict	UMETA(DisplayName = "Derelict salvage")
+	MilkRun		UMETA(DisplayName = "Milk run"),
+	Standard	UMETA(DisplayName = "Standard run"),
+	Priority	UMETA(DisplayName = "Priority run")
 };
 
 /** Everything needed to spin up one voyage instance. Deterministic from (Type, Seed). */
@@ -21,7 +21,7 @@ struct AIRLOCK_API FVoyageSpec
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyage")
-	EVoyageType Type = EVoyageType::Mining;
+	EVoyageType Type = EVoyageType::MilkRun;
 
 	/** Seed that drives every random decision in the voyage; identical seeds replay identically. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyage")
@@ -42,4 +42,11 @@ struct AIRLOCK_API FVoyageSpec
 	/** Player slots on this voyage; also the ship's life-support cap. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyage")
 	int32 CrewCapacity = 6;
+
+	/** Casks in the hold for this contract (4 / 8 / 12) and how many of them are volatile (2 / 4 / 6). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyage")
+	int32 CaskCount = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voyage")
+	int32 VolatileCount = 2;
 };

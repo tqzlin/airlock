@@ -8,6 +8,8 @@
 #include "Ship/CargoModel.h"
 #include "VoyageSubsystem.generated.h"
 
+class UAirlockSaveGame;
+
 /**
  * Owns the voyage lifecycle: offers voyages at the station hub, accepts requests, and (later) spins up
  * the instanced ship server for each one. Everything that changes state is server-only.
@@ -49,6 +51,16 @@ public:
 	void SetLastVoyageResult(const FVoyageResult& Result);
 	bool GetLastVoyageResult(FVoyageResult& OutResult) const;
 
+	// --- The Rig's persistent stock (M3-7): a save-game slot per machine until M4 moves it server-side. ---
+	FString SaveSlotName = TEXT("Airlock");
+	/** Loads the slot (creating defaults when absent). Called by Initialize; tests call it after setting the slot. */
+	void ReloadSave();
+	/** Deletes the slot and restores the defaults in memory. */
+	bool ResetSave();
+	int32 GetBaseFuelTonnes() const;
+	int32 GetRunsCompleted() const;
+	void SetBaseFuelTonnes(int32 Tonnes);
+
 	/** Days since the Unix epoch in UTC: the same on every machine on the same day. */
 	static int32 TodaySeed();
 
@@ -57,4 +69,6 @@ private:
 	FGuid PendingVoyageId;
 	FVoyageResult LastVoyageResult;
 	bool bHasLastVoyageResult = false;
+	UPROPERTY(Transient) TObjectPtr<UAirlockSaveGame> Save;
+	void SaveNow();
 };

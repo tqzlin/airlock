@@ -37,6 +37,8 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, PuffingCrates);
 	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
 	DOREPLIFETIME(AAirlockGameState, bHasLastVoyageResult);
+	DOREPLIFETIME(AAirlockGameState, BaseFuelTonnes);
+	DOREPLIFETIME(AAirlockGameState, RunsCompleted);
 }
 
 void AAirlockGameState::PublishShipGraph(const FShipGraph& Graph)

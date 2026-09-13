@@ -11,7 +11,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirlockVoyageScheduleTest, "Airlock.Voyage.Sch
 
 bool FAirlockVoyageScheduleTest::RunTest(const FString& Parameters)
 {
-	for (const EVoyageType Type : { EVoyageType::Mining, EVoyageType::Pirates, EVoyageType::Derelict })
+	for (const EVoyageType Type : { EVoyageType::MilkRun, EVoyageType::Standard, EVoyageType::Priority })
 	{
 		for (const float Duration : { 0.f, 1.f, 30.f, 60.f, 120.f, 1200.f })
 		{
@@ -55,7 +55,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirlockVoyageTypeLinesTest, "Airlock.Voyage.Sc
 bool FAirlockVoyageTypeLinesTest::RunTest(const FString& Parameters)
 {
 	TSet<FString> Lines;
-	for (const EVoyageType Type : { EVoyageType::Mining, EVoyageType::Pirates, EVoyageType::Derelict })
+	for (const EVoyageType Type : { EVoyageType::MilkRun, EVoyageType::Standard, EVoyageType::Priority })
 	{
 		FVoyageSpec Spec;
 		Spec.Type = Type;

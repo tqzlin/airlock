@@ -22,8 +22,8 @@ FText UVoyageBoardWidget::DescribeOffer(const FVoyageSpec& Spec)
 	const UEnum* TypeEnum = StaticEnum<EVoyageType>();
 	const FText TypeName = TypeEnum ? TypeEnum->GetDisplayNameTextByValue(static_cast<int64>(Spec.Type)) : FText::GetEmpty();
 	return FText::Format(
-		NSLOCTEXT("Airlock", "VoyageOfferLine", "{0}  -  {1}  -  Capt. {2}  -  crew {3}  -  {4} min"),
-		TypeName, FText::FromName(Spec.ShipClassId), FText::FromName(Spec.Captain),
+		NSLOCTEXT("Airlock", "VoyageOfferLine", "{0}  -  {1} casks  -  Capt. {2}  -  crew {3}  -  {4} min"),
+		TypeName, FText::AsNumber(Spec.CaskCount), FText::FromName(Spec.Captain),
 		FText::AsNumber(Spec.CrewCapacity), FText::AsNumber(FMath::RoundToInt(Spec.DurationSeconds / 60.f)));
 }
 
@@ -46,6 +46,16 @@ FText UVoyageBoardWidget::DescribeResult(const FVoyageResult& Result)
 	if (Result.CratesBurned > 0) { Base = FText::Format(NSLOCTEXT("Airlock", "LastRunBurned", "{0} - {1} burned"), Base, FText::AsNumber(Result.CratesBurned)); }
 	if (Result.bLateDock) { Base = FText::Format(NSLOCTEXT("Airlock", "LastRunLate", "{0} - late"), Base); }
 	return Base;
+}
+FText UVoyageBoardWidget::DescribeBase(int32 Tonnes, int32 Runs, int32 Surplus, bool bHasResult)
+{
+	const FText Base = FText::Format(NSLOCTEXT("Airlock", "BaseFuelLine", "Base fuel {0} t  -  runs {1}"), FText::AsNumber(Tonnes), FText::AsNumber(Runs));
+	return bHasResult ? FText::Format(NSLOCTEXT("Airlock", "BaseFuelLineRun", "{0}  (+{1} this run)"), Base, FText::AsNumber(Surplus)) : Base;
+}
+void UVoyageBoardWidget::SetBaseFuel(int32 Tonnes, int32 Runs, int32 InSurplusThisRun, bool bHasResult)
+{
+	BaseFuelTonnes = Tonnes; RunsCompleted = Runs; SurplusThisRun = InSurplusThisRun; bHasBase = true; bHasLastResult = bHasResult || bHasLastResult;
+	RefreshLabels();
 }
 void UVoyageBoardWidget::SetLastVoyageResult(const FVoyageResult& Result, bool bHasResult)
 {
@@ -103,12 +113,17 @@ TSharedRef<SWidget> UVoyageBoardWidget::RebuildWidget()
 		Frame->SetContent(Column);
 
 		Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
-		Title->SetText(NSLOCTEXT("Airlock", "VoyageBoardTitle", "DEPARTURES"));
+		Title->SetText(NSLOCTEXT("Airlock", "VoyageBoardTitle", "VELL EXTRACTOR  -  DOCK B DEPARTURES"));
 		Title->SetColorAndOpacity(FSlateColor(AccentColour));
 		FSlateFontInfo TitleFont = Title->GetFont();
 		TitleFont.Size = 28;
 		Title->SetFont(TitleFont);
 		if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(Title)) { S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
+
+		BaseLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BaseFuel"));
+		BaseLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.75f, 0.45f)));
+		FSlateFontInfo BaseFont = BaseLabel->GetFont(); BaseFont.Size = 16; BaseLabel->SetFont(BaseFont);
+		Column->AddChildToVerticalBox(BaseLabel)->SetPadding(FMargin(0, 0, 0, 4));
 
 		ResultLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("LastRun"));
 		ResultLabel->SetColorAndOpacity(FSlateColor(AccentColour));
@@ -116,7 +131,7 @@ TSharedRef<SWidget> UVoyageBoardWidget::RebuildWidget()
 		Column->AddChildToVerticalBox(ResultLabel)->SetPadding(FMargin(0, 0, 0, 10));
 
 		Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
-		Status->SetText(NSLOCTEXT("Airlock", "VoyageBoardHint", "Pick a voyage, then proceed to Dock B."));
+		Status->SetText(NSLOCTEXT("Airlock", "VoyageBoardHint", "Pick a contract, then proceed to Dock B."));
 		FSlateFontInfo StatusFont = Status->GetFont();
 		StatusFont.Size = 13;
 		Status->SetFont(StatusFont);
@@ -158,6 +173,11 @@ void UVoyageBoardWidget::NativeConstruct()
 
 void UVoyageBoardWidget::RefreshLabels()
 {
+	if (BaseLabel)
+	{
+		BaseLabel->SetText(bHasBase ? DescribeBase(BaseFuelTonnes, RunsCompleted, SurplusThisRun, bHasLastResult) : FText::GetEmpty());
+		BaseLabel->SetVisibility(bHasBase ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 	if (ResultLabel)
 	{
 		ResultLabel->SetText(bHasLastResult ? DescribeResult(LastResult) : FText::GetEmpty());

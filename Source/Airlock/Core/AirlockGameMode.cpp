@@ -19,6 +19,7 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/CargoLayouts.h"
+#include "Station/StationSign.h"
 #include "Ship/FuelLayouts.h"
 #include "Ship/FuelValve.h"
 #include "Ship/BypassValve.h"
@@ -94,6 +95,8 @@ void AAirlockGameMode::InitGameState()
 	if (GS->CurrentSectionId == HubSectionId && Voyages)
 	{
 		GS->bHasLastVoyageResult = Voyages->GetLastVoyageResult(GS->LastVoyageResult);
+		GS->BaseFuelTonnes = Voyages->GetBaseFuelTonnes();
+		GS->RunsCompleted = Voyages->GetRunsCompleted();
 	}
 
 	FVoyageSpec Spec;
@@ -113,6 +116,7 @@ void AAirlockGameMode::BeginPlay()
 	Super::BeginPlay();
 	BuildShipGraph();
 	BuildCargo();
+	BuildStationSigns();
 	BuildFuel();
 
 	int32 Bound = 0;
@@ -153,7 +157,7 @@ void AAirlockGameMode::BeginPlay()
 			}
 			IncidentDirector = NewObject<UIncidentDirectorComponent>(this, TEXT("IncidentDirector"));
 			IncidentDirector->RegisterComponent();
-			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount), CargoLayouts::Find(GS->CurrentSectionId));
+			IncidentDirector->StartVoyage(ActiveVoyage, *Layout, FMath::Max(1, CrewCount), ActiveCargoLayout.Crates.IsEmpty() ? nullptr : &ActiveCargoLayout);
 		}
 		ScheduleNextVoyageEvent();
 	}
@@ -191,13 +195,15 @@ void AAirlockGameMode::HandleTransitionRequested(AAirlockDoor* Door, APawn* Pawn
 	// Card text: where we're going, and who's flying if it's a voyage.
 	FVoyageSpec Spec;
 	const bool bHasSpec = Voyages && Voyages->GetPendingVoyage(Spec);
+	// The hub-bound crossing is the refinery dock (M3-7): the card names the destination, not the map.
 	const FText Title = bToHub
-		? NSLOCTEXT("Airlock", "TransitionToHub", "RETURNING TO STATION")
+		? NSLOCTEXT("Airlock", "TransitionToHub", "DOCKING - HALDER SOLAR REFINERY")
 		: NSLOCTEXT("Airlock", "TransitionBoarding", "CYCLING AIRLOCK");
 	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
 	const FText FromSection = FText::FromName(GS ? GS->CurrentSectionId : NAME_None);
-	const FText Subtitle = (bHasSpec && !bToHub)
-		? UVoyageBoardWidget::DescribeOffer(Spec)
+	const FText Subtitle = bToHub
+		? NSLOCTEXT("Airlock", "TransitionRefinery", "cargo off, fuel on - then home to the Vell Extractor")
+		: bHasSpec ? UVoyageBoardWidget::DescribeOffer(Spec)
 		: FText::Format(NSLOCTEXT("Airlock", "TransitionGeneric", "{0}  ->  {1}"), FromSection, FText::FromName(TargetSectionId));
 	UE_LOG(LogAirlock, Log, TEXT("Airlock %s: travelling to %s (section %s) in %.1fs"), *Door->GetName(), *Door->TargetLevel.GetLongPackageName(), *TargetSectionId.ToString(), TravelFadeDelay);
 	TravelToSection(Door->TargetLevel, TargetSectionId, Title, Subtitle);
@@ -331,12 +337,10 @@ void AAirlockGameMode::ReturnToHub()
 		RecordVoyageResult();
 		Voyages->ClearPendingVoyage();
 	}
-	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
-	const FText Subtitle = FText::Format(NSLOCTEXT("Airlock", "TransitionGeneric", "{0}  ->  {1}"),
-		FText::FromName(GS ? GS->CurrentSectionId : NAME_None), FText::FromName(HubSectionId));
+	const FText Subtitle = NSLOCTEXT("Airlock", "TransitionRefinery", "cargo off, fuel on - then home to the Vell Extractor");
 	UE_LOG(LogAirlock, Log, TEXT("Voyage clock expired: travelling to %s (section %s) in %.1fs"),
 		*HubLevel.GetLongPackageName(), *HubSectionId.ToString(), TravelFadeDelay);
-	TravelToSection(HubLevel, HubSectionId, NSLOCTEXT("Airlock", "TransitionToHub", "RETURNING TO STATION"), Subtitle);
+	TravelToSection(HubLevel, HubSectionId, NSLOCTEXT("Airlock", "TransitionToHub", "DOCKING - HALDER SOLAR REFINERY"), Subtitle);
 }
 
 void AAirlockGameMode::BuildShipGraph()
@@ -471,8 +475,15 @@ FString AAirlockGameMode::ShipSummary() const { return ShipGraph.Summary(); }
 void AAirlockGameMode::BuildCargo()
 {
 	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
-	const FCargoLayout* Layout = GS ? CargoLayouts::Find(GS->CurrentSectionId) : nullptr;
-	if (!HasAuthority() || !Layout) { return; }
+	if (!HasAuthority() || !GS || !CargoLayouts::Find(GS->CurrentSectionId)) { return; }
+	// A booked contract sizes the manifest (M3-7); a ship entered unbooked keeps the four-cask layout.
+	FVoyageSpec Pending;
+	const UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
+	ActiveCargoLayout = (Voyages && Voyages->GetPendingVoyage(Pending))
+		? CargoLayouts::Build(GS->CurrentSectionId, Pending.CaskCount, Pending.VolatileCount)
+		: *CargoLayouts::Find(GS->CurrentSectionId);
+	const FCargoLayout* Layout = &ActiveCargoLayout;
+	UE_LOG(LogAirlock, Log, TEXT("Cargo manifest: %d casks, %d slots"), Layout->Crates.Num(), Layout->Slots.Num());
 	CargoModel.Build(*Layout);
 	AtmosphereModel.Reset();
 	PublishAtmosphere();
@@ -580,7 +591,29 @@ void AAirlockGameMode::RecordVoyageResult()
 		const FVoyageResult Result = CargoTally();
 		Voyages->SetLastVoyageResult(Result);
 		bRecordedVoyageResult = true;
-		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s"), *Result.Summary());
+		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s, fuel +%d t"), *Result.Summary(), Result.FuelSurplus);
+	}
+}
+
+void AAirlockGameMode::BuildStationSigns()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS) { return; }
+	for (const FStationSignSpec& Spec : StationSigns::Find(GS->CurrentSectionId))
+	{
+		FActorSpawnParameters Params;
+		Params.Name = Spec.Id;
+		Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Sign = GetWorld()->SpawnActor<AStationSign>(AStationSign::StaticClass(), Spec.Transform, Params))
+		{
+			Sign->Initialize(Spec);
+#if WITH_EDITOR
+			Sign->SetActorLabel(Spec.Id.ToString(), false);
+			Sign->SetFolderPath(TEXT("Signs"));
+#endif
+			Sign->FinishSpawning(Spec.Transform);
+		}
 	}
 }
 

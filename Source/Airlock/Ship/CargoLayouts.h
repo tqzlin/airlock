@@ -11,6 +11,8 @@ struct AIRLOCK_API FCargoSlotSpec
 	UPROPERTY() bool bRack = false;
 	UPROPERTY() FTransform Transform;
 	UPROPERTY() FSoftObjectPath Mesh;
+	/** Applied to the pad mesh only (the actor stays at scale 1, so a placed crate keeps its size). */
+	UPROPERTY() FVector MeshScale = FVector(1.f);
 };
 
 USTRUCT()
@@ -34,5 +36,8 @@ struct AIRLOCK_API FCargoLayout
 
 namespace CargoLayouts
 {
+	/** Today's four-cask, three-clamp manifest (what every proof books), or null for a section without a hold. */
 	AIRLOCK_API const FCargoLayout* Find(FName SectionId);
+	/** The manifest of a contract tier (M3-7): CaskCount casks (up to 12), every second one volatile up to VolatileCount, CaskCount * 3 / 4 clamps, one rack. */
+	AIRLOCK_API FCargoLayout Build(FName SectionId, int32 CaskCount, int32 VolatileCount);
 }

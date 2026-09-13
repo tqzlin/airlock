@@ -18,16 +18,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirlockVoyageSpecDeterminismTest, "Airlock.Voy
 
 bool FAirlockVoyageSpecDeterminismTest::RunTest(const FString& Parameters)
 {
-	const FVoyageSpec A = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Pirates, 42);
-	const FVoyageSpec B = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Pirates, 42);
-	const FVoyageSpec C = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Mining, 42);
+	const FVoyageSpec A = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Standard, 42);
+	const FVoyageSpec B = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Standard, 42);
+	const FVoyageSpec C = UVoyageSubsystem::MakeVoyageSpec(EVoyageType::MilkRun, 42);
 
 	TestTrue(TEXT("Same (type, seed) gives the same captain"), A.Captain == B.Captain);
 	TestTrue(TEXT("Same (type, seed) gives the same crew capacity"), A.CrewCapacity == B.CrewCapacity);
-	TestTrue(TEXT("Type is preserved"), A.Type == EVoyageType::Pirates);
+	TestTrue(TEXT("Type is preserved"), A.Type == EVoyageType::Standard);
 	TestTrue(TEXT("Voyage lasts 20 minutes"), FMath::IsNearlyEqual(A.DurationSeconds, 1200.f));
-	TestTrue(TEXT("Crew capacity is within the MVP band"), A.CrewCapacity >= 4 && A.CrewCapacity <= 8);
-	TestTrue(TEXT("Different types pick different ships"), A.ShipClassId != C.ShipClassId);
+	// M3-7: the tiers size the crew and the manifest; every tier flies the hauler.
+	TestTrue(TEXT("Standard run seats four"), A.CrewCapacity == 4 && C.CrewCapacity == 2);
+	TestTrue(TEXT("Every tier flies the hauler"), A.ShipClassId == C.ShipClassId && A.ShipClassId == FName(TEXT("Hauler_Mk1")));
+	TestTrue(TEXT("Tiers size the manifest"), A.CaskCount == 8 && C.CaskCount == 4);
 	return true;
 }
 
@@ -59,17 +61,17 @@ bool FAirlockVoyageOffersTest::RunTest(const FString& Parameters)
 {
 	// The board shows one offer per type, in a stable order, and the description names the captain.
 	TArray<FVoyageSpec> Offers;
-	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Mining, 7));
-	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Pirates, 7));
-	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Derelict, 7));
+	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::MilkRun, 7));
+	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Standard, 7));
+	Offers.Add(UVoyageSubsystem::MakeVoyageSpec(EVoyageType::Priority, 7));
 	TestEqual(TEXT("Three offers"), Offers.Num(), 3);
-	TestTrue(TEXT("Mining first"), Offers[0].Type == EVoyageType::Mining);
-	TestTrue(TEXT("Pirates second"), Offers[1].Type == EVoyageType::Pirates);
-	TestTrue(TEXT("Derelict third"), Offers[2].Type == EVoyageType::Derelict);
+	TestTrue(TEXT("Milk run first"), Offers[0].Type == EVoyageType::MilkRun);
+	TestTrue(TEXT("Standard second"), Offers[1].Type == EVoyageType::Standard);
+	TestTrue(TEXT("Priority third"), Offers[2].Type == EVoyageType::Priority);
 
 	const FString Line = UVoyageBoardWidget::DescribeOffer(Offers[0]).ToString();
 	TestTrue(TEXT("Description names the captain"), Line.Contains(Offers[0].Captain.ToString()));
-	TestTrue(TEXT("Description names the ship"), Line.Contains(Offers[0].ShipClassId.ToString()));
+	TestTrue(TEXT("Description names the tier and the casks"), UVoyageBoardWidget::DescribeOffer(Offers[2]).ToString().Contains(TEXT("12 casks")) && UVoyageBoardWidget::DescribeOffer(Offers[2]).ToString().Contains(TEXT("Priority run")));
 	TestTrue(TEXT("Day seed is a day count, not ticks"), UVoyageSubsystem::TodaySeed() > 20000 && UVoyageSubsystem::TodaySeed() < 40000);
 	return true;
 }
