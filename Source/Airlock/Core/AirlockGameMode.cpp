@@ -19,6 +19,10 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/CargoLayouts.h"
+#include "Ship/FuelLayouts.h"
+#include "Ship/FuelValve.h"
+#include "Ship/BypassValve.h"
+#include "Ship/FuelIntake.h"
 #include "TimerManager.h"
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
@@ -109,6 +113,7 @@ void AAirlockGameMode::BeginPlay()
 	Super::BeginPlay();
 	BuildShipGraph();
 	BuildCargo();
+	BuildFuel();
 
 	int32 Bound = 0;
 	for (TActorIterator<AAirlockDoor> It(GetWorld()); It; ++It)
@@ -129,6 +134,7 @@ void AAirlockGameMode::BeginPlay()
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
+		if (FuelHasSystem()) { FuelModel.Reset(); PublishFuel(); }
 		AirCaptainLastSpoken.Reset();
 		BlackoutCount = 0; CountedBlackouts.Reset();
 		GS->bVoyageActive = true;
@@ -408,6 +414,7 @@ void AAirlockGameMode::TickShipGraph()
 		const bool bAirChanged = AtmosphereModel.Tick(0.25f, CargoModel.Crates());
 		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
 	}
+	TickFuel();
 }
 
 void AAirlockGameMode::PublishShipGraph()
@@ -667,3 +674,103 @@ void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
 	++BlackoutCount;
 	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down - med-bot's on it."), Pawn);
 }
+
+bool AAirlockGameMode::FuelHasSystem() const
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	return GS && FuelLayouts::Find(GS->CurrentSectionId) != nullptr;
+}
+void AAirlockGameMode::BuildFuel()
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	const auto* Layout = GS ? FuelLayouts::Find(GS->CurrentSectionId) : nullptr;
+	if (!HasAuthority() || !Layout) { return; }
+	FuelModel.Reset(); PublishFuel();
+	const auto Spawn = [this]<typename T>(const FFuelFixtureSpec& Spec)
+	{
+		FActorSpawnParameters Params; Params.Name = Spec.Id; Params.bDeferConstruction = true;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (auto* Actor = GetWorld()->SpawnActor<T>(T::StaticClass(), Spec.Transform, Params))
+		{
+			Actor->Initialize(Spec);
+#if WITH_EDITOR
+			Actor->SetActorLabel(Spec.Id.ToString(), false); Actor->SetFolderPath(TEXT("Fuel"));
+#endif
+			Actor->FinishSpawning(Spec.Transform);
+		}
+	};
+	Spawn.operator()<AFuelValve>(Layout->FeedValve);
+	Spawn.operator()<ABypassValve>(Layout->BypassValve);
+	Spawn.operator()<AFuelIntake>(Layout->Intake);
+	if (!GetWorldTimerManager().IsTimerActive(ShipGraphTimer))
+	{ GetWorldTimerManager().SetTimer(ShipGraphTimer, this, &AAirlockGameMode::TickShipGraph, .25f, true); }
+}
+void AAirlockGameMode::PublishFuel()
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return; }
+	auto* GS = GetGameState<AAirlockGameState>();
+	FFuelState Mirror = FuelModel.State(); Mirror.Units = FMath::FloorToFloat(Mirror.Units);
+	const FFuelState Old = GS->Fuel; const FFuelRates R;
+	bool bLog = Old.bFeedLeak != Mirror.bFeedLeak || Old.bBypassOpen != Mirror.bBypassOpen
+		|| Old.bInjectorsFouled != Mirror.bInjectorsFouled || Old.bExhausted != Mirror.bExhausted;
+	for (float Percent : { R.LowFuelPercent, R.CriticalFuelPercent })
+	{ const float Threshold = R.Capacity * Percent / 100.f; bLog |= (Old.Units < Threshold) != (Mirror.Units < Threshold); }
+	GS->PublishFuel(Mirror);
+	if (bLog) { UE_LOG(LogAirlock, Log, TEXT("Fuel %d%% leak=%d bypass=%s"), FMath::FloorToInt(Mirror.Units), Mirror.bFeedLeak, Mirror.bBypassOpen ? TEXT("open") : TEXT("closed")); }
+	if (!Old.bInjectorsFouled && Mirror.bInjectorsFouled) { UE_LOG(LogAirlock, Log, TEXT("Injectors fouled")); }
+	if (Old.bInjectorsFouled && !Mirror.bInjectorsFouled) { UE_LOG(LogAirlock, Log, TEXT("Injectors cleared")); }
+}
+void AAirlockGameMode::TickFuel()
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !FuelHasSystem() || !GS->bVoyageActive) { return; }
+	const auto Before = FuelModel.State();
+	if (AirHasAtmosphere() && AtmosphereModel.AddPpm(FuelModel.SootPerSecond() * .25f)) { PublishAtmosphere(); }
+	if (FuelModel.Tick(.25f)) { PublishFuel(); }
+	if (FuelModel.State().CasksBurned != Before.CasksBurned)
+	{ UE_LOG(LogAirlock, Log, TEXT("Fuel feed %s done: +15"), *Before.BurningCrate.ToString()); }
+	if (!Before.bExhausted && FuelModel.State().bExhausted)
+	{
+		SetVoyageSecondsRemaining(GS->GetVoyageSecondsRemaining() + FFuelRates().LateDockSeconds);
+		UE_LOG(LogAirlock, Log, TEXT("Fuel exhausted: docking 120 s late"));
+		SpeakAirCaptain(TEXT("FuelExhausted"), NSLOCTEXT("Airlock", "FuelExhausted", "Captain {0} here. We're dry. Coasting in on momentum - we dock late."));
+	}
+}
+bool AAirlockGameMode::FuelOpenLeak()
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return false; }
+	FuelModel.OpenLeak(); PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelCloseLeak()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.CloseLeak()) { return false; }
+	PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelOpenBypass()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.OpenBypass()) { return false; }
+	PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelFeedCask(FName Id)
+{
+	if (!HasAuthority() || !FuelHasSystem()) { return false; }
+	const float Fouling = FuelModel.FoulingOnFeed();
+	// Stage fuel first: a refused cargo consume must leave even the burn clock unchanged.
+	FFuelSystem Candidate = FuelModel;
+	if (!Candidate.FeedCask(Id) || !CargoModel.Consume(Id)) { return false; }
+	FuelModel = Candidate;
+	ShipDamageModule(TEXT("Engines"), Fouling);
+	PublishCargo(); PublishFuel();
+	UE_LOG(LogAirlock, Log, TEXT("Fuel feed %s started"), *Id.ToString()); return true;
+}
+bool AAirlockGameMode::FuelClearInjectors()
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.ClearInjectors()) { return false; }
+	PublishFuel(); return true;
+}
+bool AAirlockGameMode::FuelSet(float Units)
+{
+	if (!HasAuthority() || !FuelHasSystem() || !FuelModel.SetUnits(Units)) { return false; }
+	PublishFuel(); return true;
+}
+FString AAirlockGameMode::FuelSummary() const { return FuelHasSystem() ? FuelModel.Summary() : TEXT("No fuel system on this section"); }

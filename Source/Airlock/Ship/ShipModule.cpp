@@ -6,6 +6,8 @@
 #include "Components/PointLightComponent.h"
 #include "Core/AirlockGameState.h"
 #include "Core/AirlockCharacter.h"
+#include "Core/AirlockGameMode.h"
+#include "Ship/FuelLayouts.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -101,6 +103,8 @@ void AShipModule::Refresh()
 FText AShipModule::GetInteractPrompt_Implementation() const
 {
 	const auto* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr;
+	if (Spec.Type == EShipModuleType::Engines && GS && FuelLayouts::Find(GS->CurrentSectionId) && GS->Fuel.bInjectorsFouled)
+	{ return NSLOCTEXT("Airlock", "ClearInjectors", "Clear the injectors (hold E)"); }
 	if (Spec.Type != EShipModuleType::LifeSupport || !GS || !GS->AirHasAtmosphere() || GS->Atmosphere.bScrubDisabled) { return FText::GetEmpty(); }
 	switch (GS->Atmosphere.ScrubMode)
 	{
@@ -111,10 +115,20 @@ FText AShipModule::GetInteractPrompt_Implementation() const
 }
 void AShipModule::Interact_Implementation(APawn* Pawn)
 {
-	if (GetInteractPrompt_Implementation().IsEmpty()) { return; }
+	if (Spec.Type != EShipModuleType::LifeSupport || GetInteractPrompt_Implementation().IsEmpty()) { return; }
 	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
 	if (auto* Character = Cast<AAirlockCharacter>(Pawn))
 	{
 		Character->ServerSetScrubMode(GS->Atmosphere.ScrubMode == EScrubMode::Normal ? EScrubMode::Hazard : EScrubMode::Normal);
 	}
+}
+
+float AShipModule::GetInteractHoldSeconds_Implementation() const
+{
+	return Spec.Type == EShipModuleType::Engines && !GetInteractPrompt_Implementation().IsEmpty() ? 4.f : 0.f;
+}
+void AShipModule::OnHoldComplete_Implementation(APawn* Pawn)
+{
+	if (!HasAuthority() || !Pawn || GetInteractHoldSeconds_Implementation() <= 0) { return; }
+	if (auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>()) { GM->FuelClearInjectors(); }
 }

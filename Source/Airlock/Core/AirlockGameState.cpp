@@ -32,6 +32,7 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, ShipModules);
 	DOREPLIFETIME(AAirlockGameState, ShipLines);
 	DOREPLIFETIME(AAirlockGameState, Cargo);
+	DOREPLIFETIME(AAirlockGameState, Fuel);
 	DOREPLIFETIME(AAirlockGameState, Atmosphere);
 	DOREPLIFETIME(AAirlockGameState, PuffingCrates);
 	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
@@ -79,3 +80,10 @@ void AAirlockGameState::PublishAtmosphere(const FAtmosphereState& Air, const TAr
 	OnRep_Atmosphere();
 }
 void AAirlockGameState::OnRep_Atmosphere() { OnShipGraphChanged.Broadcast(); }
+
+void AAirlockGameState::PublishFuel(const FFuelState& InFuel)
+{
+	if (!HasAuthority() || Fuel == InFuel) { return; }
+	Fuel = InFuel; ForceNetUpdate(); OnRep_Fuel();
+}
+void AAirlockGameState::OnRep_Fuel() { OnShipGraphChanged.Broadcast(); }

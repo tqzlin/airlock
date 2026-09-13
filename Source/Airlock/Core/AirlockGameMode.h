@@ -8,6 +8,7 @@
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
+#include "Ship/FuelSystem.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -51,6 +52,14 @@ public:
 	FVoyageResult CargoTally() const;
 	FString CargoSummary() const;
 	void RecordVoyageResult();
+	bool FuelHasSystem() const;
+	bool FuelOpenLeak();
+	bool FuelCloseLeak();
+	bool FuelOpenBypass();
+	bool FuelFeedCask(FName Id);
+	bool FuelClearInjectors();
+	bool FuelSet(float Units);
+	FString FuelSummary() const;
 	bool AirHasAtmosphere() const;
 	bool AirSetScrubMode(EScrubMode Mode);
 	bool AirSetPpm(float Ppm);
@@ -79,6 +88,10 @@ private:
 	FShipGraph ShipGraph;
 	FCargoModel CargoModel;
 	FShipAtmosphere AtmosphereModel;
+	FFuelSystem FuelModel;
+	void BuildFuel();
+	void TickFuel();
+	void PublishFuel();
 	bool UpdateAtmosphereFlags();
 	void PublishAtmosphere();
 	TMap<FName, double> AirCaptainLastSpoken;
