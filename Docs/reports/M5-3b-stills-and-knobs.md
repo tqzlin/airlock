@@ -240,3 +240,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\verify-two-clients.p
 Final editor check (port 8000): `IsPIERunning=false`, current level `/Game/Maps/StationHub`; StationHub,
 Hauler_Mk1 and RefineryFloor all report `is_dirty=false`; `PlayNetMode=PIE_Standalone`, `PlayNumberOfClients=1`.
 The editor remains open. Evidence: `Saved/m5-3b-final-editor.txt`. Branch is committed locally, not merged.
+
+## Reviewer verification (Claude, 2026-09-13 early afternoon)
+
+Reviewed from Claude Code after Astra's process had exited (55 min, nine commits, no GUI tool, the editor on port
+8000 left on StationHub with no PIE and clean maps).
+
+- **Diff read** against the brief: every changed file is on the allowed list, `FloorFixture.h` took exactly the
+  three-line edit (a virtual `Refresh`, protected `FloorState` / `bVisualsReady`, `GetSpec()`), the two new
+  interface events are default-false / default-empty, the repeating hold starts server-side in `ServerBeginHold`
+  and resets without clearing in the tick, the lever refusal is checked before the hold starts, the hopper goes
+  through `ServerLoadStill` with the feed verb's checks, every mutation through the `Refinery*` API. Astra
+  recorded the brief's own mistake instead of fixing it silently: the gauge offsets I specified are relative to a
+  root scaled 0.8, so two of the three lines sit against the tank's face (the report's geometry note; the test
+  pins the offsets). That is the behaviour we want from a brief-follower; the tuning is M5-5's.
+- **Captures read**: `floor-still-gauges.png` (Still 2 running C2 at 12 %, the three lines legible, red / amber
+  states not exercised in that frame), `floor-still-handles.png` (`HEAT - 30%` ... `VENT + 55%` in a row, both
+  hoppers `0 queued`, the gauge at 19 %). Crowded but readable; the base label's second line (M5-3a's
+  `C2 12% 151K 1.1bar`) now repeats the first gauge line and should go on `AStill` - M5-5.
+- **Merge**: `--no-ff` into `main` at ba9a0b9, followed by `claude/m5-2b-floor-lighting` (3a25420; the proof
+  script's tank wait kept Astra's wider `[3-9][0-9][0-9]` pattern over the lighting branch's `3[0-9][0-9]`) and
+  `claude/m5-4a-floor-hazards-model` (d3d2dd2). Merged tree: clean build, **150 / 150**, twelve proofs:
+
+  | Proof | Result |
+  | --- | --- |
+  | `verify-loop.ps1` | LOOP OK (53 s) |
+  | `verify-ship-graph.ps1` | GRAPH OK (71 s) |
+  | `verify-incidents.ps1` | INCIDENTS OK (57 s) |
+  | `verify-voyage-clock.ps1` | CLOCK OK (117 s, with the floor hop) |
+  | `verify-level-pass.ps1` | LEVEL OK (151 s) |
+  | `verify-cargo.ps1` | CARGO OK (87 s) |
+  | `verify-atmosphere.ps1` | ATMOSPHERE OK (123 s) |
+  | `verify-fuel.ps1` | FUEL OK (147 s) |
+  | `verify-refinery.ps1` | REFINERY OK (64 s) |
+  | `verify-legibility.ps1` | LEGIBILITY OK (67 s) |
+  | `verify-two-clients.ps1` | TWO CLIENTS OK (74 s, with the floor hop) |
+  | `verify-floor.ps1` | FLOOR OK (212 s: both batches, 2/2 refined, on the lit map) |
+
+  Twelve for twelve; the three merges stand. M5-4b (the hazards' bodies) launches on this tree.
