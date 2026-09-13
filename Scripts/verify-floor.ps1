@@ -2,16 +2,17 @@
 # default 8000):
 #   powershell -ExecutionPolicy Bypass -File Scripts/verify-floor.ps1 [-ProbePositions]
 # The ship docks (clock expiry) on the floor with the run's intact casks on the pallets, Okafor runs the slot, C1 is
-# refined in Still 1 by console and C2 in Still 2 through the physical controls (M5-3b), the slot's end takes everyone home with the
+# refined in Still 1 by console and C2 in Still 2 through the physical controls. Still 2 floods, the crew drops C3
+# in the crude and squeegees it, then C3 refines in Still 1 (M5-4b). The slot's end takes everyone home with the
 # combined result and the diesel surplus on the Rig's board. Only the file console drives gameplay; captures and the log
-# excerpt land in Saved/AgentCaptures/M5-2; HUD text is capture-only. -ProbePositions instead opens the floor map,
+# excerpt land in Saved/AgentCaptures/M5-4b; HUD text is capture-only. -ProbePositions instead opens the floor map,
 # drops the pawn on every fixture, cask and panel spot and reports where its feet settle (the layout Z is the
 # starting value; the report is what the table is tuned from).
 param([switch]$ProbePositions)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib/mcp.ps1')
 $root = Split-Path $PSScriptRoot -Parent
-$proofDir = Join-Path $root 'Saved/AgentCaptures/M5-3b'
+$proofDir = Join-Path $root 'Saved/AgentCaptures/M5-4b'
 $commandPath = Join-Path $root 'Saved/AgentConsole/commands.txt'
 New-Item -ItemType Directory -Force -Path $proofDir, (Split-Path $commandPath -Parent) | Out-Null
 $script:ProofStart = [DateTime]::UtcNow
@@ -84,8 +85,11 @@ $controlOffsets = @(@('Hopper',-200,-200), @('HeatMinus',-120,-200), @('HeatPlus
     @('FeedMinus',-20,-200), @('FeedPlus',20,-200), @('VentMinus',80,-200), @('VentPlus',120,-200),
     @('Reset',-75,-130), @('Purge',-25,-130), @('Scrape',25,-130), @('Repair',75,-130), @('Calibrate',150,-60))
 $controlSpots = @()
+$spillSpots = @()
 for ($i=1; $i -le 3; $i++) {
     $stillX = -5800 + ($i-1)*400
+    # RefineryLayouts::SpillPoint rotates (0,-230,0) without the tank's 0.8 scale; all three yaw 0.
+    $spillSpots += ,@("Still_${i}_Spill", $stillX, 1670)
     foreach ($offset in $controlOffsets) {
         $controlY = if ($i -eq 3 -and $offset[0] -ne 'Hopper') { 1600 } else { 1900+$offset[2] }
         $controlSpots += ,@("Still_${i}_$($offset[0])", ($stillX+$offset[1]), $controlY)
@@ -111,7 +115,7 @@ try {
         $script:StartedPIE = $true
         $null = Wait-FloorProofLine ': Section RefineryFloor:' 30
         $rows = @()
-        foreach ($spot in $fixtureSpots + $caskSpots + $controlSpots) { $rows += Read-FloorProbe $spot[0] $spot[1] $spot[2] 200 }
+        foreach ($spot in $fixtureSpots + $caskSpots + $controlSpots + $spillSpots) { $rows += Read-FloorProbe $spot[0] $spot[1] $spot[2] 200 }
         $rows | Format-Table -AutoSize | Out-String | Write-Host
         $rows | Export-Csv -LiteralPath (Join-Path $proofDir 'floor-position-probe.csv') -NoTypeInformation
         Write-Host "FLOOR POSITIONS REPORTED: $($rows.Count) spots (feet Z per spot in $proofDir/floor-position-probe.csv)"
@@ -130,7 +134,7 @@ try {
     $script:StartedPIE = $true
     $null = Wait-FloorProofLine 'AgentConsole: ready' 30
 
-    # The ship leg: book the Milk run, board, secure C1 and rack C2, then let the clock dock the ship.
+    # The ship leg: book the Milk run, board, secure C1/C3 and rack C2, then let the clock dock the ship.
     Send-FloorCommand 'AirlockBook 0'
     Start-Sleep -Seconds 2
     $boardAt = [DateTime]::UtcNow
@@ -155,14 +159,22 @@ try {
     Start-Sleep -Seconds 2
     Send-FloorCommand 'AirlockPlace ColdRack'
     $null = Wait-FloorProofLine ': Cargo C2 Racked' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockWarp -5330 1700 116'
+    Start-Sleep -Seconds 2
+    Send-FloorCommand 'AirlockCarry C3'
+    $null = Wait-FloorProofLine ': Carry C3 by' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockWarp -5430 1400 116'
+    Start-Sleep -Seconds 2
+    Send-FloorCommand 'AirlockPlace Clamp_3'
+    $null = Wait-FloorProofLine ': Cargo C3 Secured' 10 $script:LastCommandAt
 
-    # Docking lands on the floor with the two intact casks; the loose ones never arrive.
+    # Docking lands on the floor with the three intact casks; the loose one never arrives.
     $dockAt = [DateTime]::UtcNow
     Send-FloorCommand 'AirlockVoyageClock 5'
-    $null = Wait-FloorProofLine ': Ship result:' 30 $dockAt '2 casks to the floor'
+    $null = Wait-FloorProofLine ': Ship result:' 30 $dockAt '3 casks to the floor'
     $null = Wait-FloorProofLine 'Transition card: DOCKING - HALDER SOLAR REFINERY' 30 $dockAt
     $null = Wait-FloorProofLine ': Section RefineryFloor:' 60 $dockAt
-    $null = Wait-FloorProofLine ': Slot clock started: 600s' 30 $dockAt 'casks=2'
+    $null = Wait-FloorProofLine ': Slot clock started: 600s' 30 $dockAt 'casks=3'
     $null = Wait-FloorProofLine ': Floor fixtures: 6' 30 $dockAt
     $null = Wait-FloorProofLine ': Still controls: 36' 30 $dockAt
     $null = Wait-FloorProofLine ': Okafor, floor three' 30 $dockAt
@@ -173,7 +185,7 @@ try {
     Send-FloorCommand 'AirlockCargoStatus'
     $null = Wait-FloorProofLine ': Cargo C1 Loose' 10 $script:LastCommandAt
     $null = Wait-FloorProofLine ': Cargo C2 Loose' 10 $script:LastCommandAt
-    if (@(Get-FloorProofLines ': Cargo C3 ' $script:LastCommandAt).Count -gt 0) { throw 'A loose cask reached the floor' }
+    $null = Wait-FloorProofLine ': Cargo C3 Loose' 10 $script:LastCommandAt
     Send-FloorCommand 'AirlockAir'
     $null = Wait-FloorProofLine ': Air 0 ppm scrub=Normal' 10 $script:LastCommandAt
     Send-FloorCommand 'AirlockShipStatus'
@@ -238,6 +250,18 @@ try {
     for ($i=0; $i -lt 10; $i++) { Send-FloorCommand 'AirlockPress Still_2_FeedPlus' }
     $null = Wait-FloorProofLine ': Refinery Still_2 feed 10/20' 10 $handAt
     $null = Wait-FloorProofLine ': Still Still_2 Running cask=C2' 10 $handAt
+    # Flood immediately while C2 has its charge, then lower feed before a second flood can happen.
+    $spillAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockKnob Still_2 Feed 20'
+    $null = Wait-FloorProofLine ': Refinery Spill Still_2 C2 litres=200' 6 $spillAt
+    $null = Wait-FloorProofLine ': Spill S1 by Still_2: 200 L' 6 $spillAt
+    $null = Wait-FloorProofLine ': Okafor: Flood on Still 2' 6 $spillAt
+    Send-FloorCommand 'AirlockKnob Still_2 Feed 10'
+    Send-FloorCommand 'AirlockWarp -5400 1450 116'
+    Send-FloorCommand 'AirlockLook 90 -25'
+    Save-FloorCapture 'floor-spill' 4
+    # Return to the existing calibration viewpoint, in the crude with empty hands.
+    Send-FloorCommand 'AirlockWarp -5400 1600 116'
     Send-FloorCommand 'AirlockHold Still_2_Calibrate'
     $null = Wait-FloorProofLine ': Hold Still_2_Calibrate complete' 10 $script:LastCommandAt
     $null = Wait-FloorProofLine ': Refinery Still_2 calibrated' 10 $script:LastCommandAt
@@ -248,6 +272,25 @@ try {
     Send-FloorCommand 'AirlockWarp -5400 1450 116'
     Send-FloorCommand 'AirlockLook 90 -20'
     Save-FloorCapture 'floor-still-handles' 4
+    Send-FloorCommand 'AirlockWarp -5920 1560 116'
+    Start-Sleep -Seconds 2
+    Send-FloorCommand 'AirlockCarry C3'
+    $null = Wait-FloorProofLine ': Carry C3 by' 10 $script:LastCommandAt
+    $stumbleAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockWarp -5400 1600 116'
+    $null = Wait-FloorProofLine ': Stumble ' 6 $stumbleAt 'drops C3 in S1'
+    $null = Wait-FloorProofLine ': PutDown C3 by' 6 $stumbleAt
+    Send-FloorCommand 'AirlockWarp -5400 1450 116'
+    $squeegeeAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockHold S1'
+    Save-FloorCapture 'floor-squeegee' 2
+    $null = Wait-FloorProofLine ': Hold S1 complete by' 10 $squeegeeAt
+    $null = Wait-FloorProofLine ': Spill S1 cleared by' 10 $squeegeeAt
+    Send-FloorCommand 'AirlockFloor'
+    $null = Wait-FloorProofLine ': No spills' 10 $script:LastCommandAt
+    Save-FloorCapture 'floor-cleared' 2
+    Send-FloorCommand 'AirlockStillLoad Still_1 C3'
+    $null = Wait-FloorProofLine ': Refinery Still_1 loaded C3' 10 $script:LastCommandAt
     Send-FloorCommand 'AirlockWarp -5800 1500 116'
     Send-FloorCommand 'AirlockLook 90'
     Save-FloorCapture 'floor-still-running' 4
@@ -256,20 +299,21 @@ try {
     $null = Wait-FloorProofLine ": Okafor: That's diesel in the tank" 10 $loadAt
     $null = Wait-FloorProofLine ': Still Still_1 Idle' 10 $loadAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_2 C2' 120 $handAt
+    $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C3' 120 $loadAt
     Send-FloorCommand 'AirlockRefinery'
     $tank = Wait-FloorProofLine ': Tank diesel=' 10 $script:LastCommandAt
     $litres = [int][regex]::Match([string]$tank, 'Tank diesel=(\d+)').Groups[1].Value
     if ($litres -lt 600) { throw "The batch yielded too little: $tank" }
     Send-FloorCommand 'AirlockTally'
-    $null = Wait-FloorProofLine ': Floor tally now: floor: 2/2 casks refined' 10 $script:LastCommandAt
+    $null = Wait-FloorProofLine ': Floor tally now: floor: 3/3 casks refined' 10 $script:LastCommandAt
     Save-FloorCapture 'floor-tank' 2
 
     # The slot's end: the horn, the combined result, the card home, the hub board.
     $hornAt = [DateTime]::UtcNow
     Send-FloorCommand 'AirlockVoyageClock 5'
     $null = Wait-FloorProofLine ': Horn. Slot' 30 $hornAt
-    $null = Wait-FloorProofLine ': Floor result: floor: 2/2 casks refined' 30 $hornAt
-    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 2/2 casks refined,'
+    $null = Wait-FloorProofLine ': Floor result: floor: 3/3 casks refined' 30 $hornAt '1 spill, 0 pops'
+    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 3/3 casks refined,'
     $null = Wait-FloorProofLine 'Transition card: UNDOCKING - HOME TO THE VELL EXTRACTOR' 30 $hornAt
     $null = Wait-FloorProofLine ': Arrival spawn for' 45 $hornAt 'X=-5640.'
     Start-Sleep -Seconds 6
@@ -282,7 +326,7 @@ try {
     Save-FloorCapture 'hub-board-floor' 3
     Send-FloorCommand 'AirlockSaveReset'
     $null = Wait-FloorProofLine ': Save reset:' 10 $script:LastCommandAt
-    Write-Host "FLOOR OK: Milk run -> C1 secured, C2 racked -> floor: two casks, six fixtures, 36 controls -> Still 1 console batch and Still 2 by-hand light batch (load, taps, repeat, calibrate, reset refusal), both done, $litres L diesel -> horn -> combined result (2/2 refined, +$tonnes t), undocking card -> hub board, save reset"
+    Write-Host "FLOOR OK: Milk run -> C1/C3 secured, C2 racked -> floor: three casks, six fixtures, 36 controls -> Still 2 by-hand batch floods 200 L into S1 -> C3 stumble and put-down -> six-second squeegee clears S1 -> C1/C3 in Still 1 and C2 in Still 2 done, $litres L diesel, 1 spill, 0 pops -> horn -> combined result (3/3 refined, +$tonnes t), undocking card -> hub board, save reset"
 }
 finally {
     if ($script:StartedPIE) {
