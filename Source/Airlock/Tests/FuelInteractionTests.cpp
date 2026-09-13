@@ -112,6 +112,8 @@ public:
 	{
 		if (Step == 0)
 		{
+			// Activate BeginPlay's pending timers before advancing a burn on a later engine frame.
+			S.World->GetTimerManager().Tick(.1f);
 			S.Mode->AirSetScrubMode(EScrubMode::Off);
 			auto* C = S.Carry(Crew,TEXT("C3")); Crew->SetActorLocation(FVector(-1300,600,118));
 			Crew->ServerFeedCask(Intake); Test->TestTrue(TEXT("Closed refusal keeps carrying"), Crew->CarriedCrate == C);
@@ -159,7 +161,7 @@ public:
 	explicit FFuelExhaustionCommand(FAutomationTestBase* T) : Test(T) {}
 	virtual bool Update() override
 	{
-		if (Step == 0) { S.Mode->SetVoyageSecondsRemaining(600); S.Mode->FuelSet(0); }
+		if (Step == 0) { S.World->GetTimerManager().Tick(.1f); S.Mode->SetVoyageSecondsRemaining(600); S.Mode->FuelSet(0); }
 		else if (Step == 1)
 		{
 			S.World->GetTimerManager().Tick(.25f);
@@ -233,25 +235,25 @@ public:
 };
 class FFuelFollowupCommand : public IAutomationLatentCommand
 {
-	FAutomationTestBase* Test; FFuelTestWorld S; FFuelLogCapture Log; int32 Step=0; int32 Case;
+	FAutomationTestBase* Test; FFuelTestWorld S; TUniquePtr<FFuelLogCapture> Log; int32 Step=0; int32 Case;
 public:
 	FFuelFollowupCommand(FAutomationTestBase* T,int32 InCase) : Test(T),Case(InCase) {}
 	virtual bool Update() override
 	{
 		if (Step == 0)
-			{ if (Case==1) { S.Mode->FuelSet(80); } S.Mode->FuelLeakConsole(); if (Case==2) { S.Mode->FuelCloseLeak(); } if (Case==3) { S.State->bVoyageActive=false; } }
+			{ S.World->GetTimerManager().Tick(.1f); Log=MakeUnique<FFuelLogCapture>(); if (Case==1) { S.Mode->FuelSet(80); } S.Mode->FuelLeakConsole(); if (Case==2) { S.Mode->FuelCloseLeak(); } if (Case==3) { S.State->bVoyageActive=false; } }
 		else
 		{
 			S.World->GetTimerManager().Tick(10.1f);
 			if (Step==1) { S.Mode->FuelCloseLeak(); S.Mode->FuelLeakConsole(); }
 			else
 			{
-				const FString Text=Log.Text();
+				const FString Text=Log->Text();
 				const TCHAR* Expected[] = { TEXT("Shut that feed. We're still good"), TEXT("At this burn we dock short."), TEXT("Feed's shut. We're still good") };
 				if (Case<3) { Test->TestTrue(TEXT("Correct follow-up branch"),Text.Contains(Expected[Case])); }
 				else { Test->TestFalse(TEXT("Inactive follow-up suppressed"),Text.Contains(TEXT("We're still good")) || Text.Contains(TEXT("At this burn"))); }
-				Test->TestEqual(TEXT("Set piece consumed once even through console"),Log.Count(TEXT("SetPiece FuelLeak at")),1);
-				Test->TestEqual(TEXT("Console reopen logged separately"),Log.Count(TEXT("SetPiece FuelLeak (console)")),1);
+				Test->TestEqual(TEXT("Set piece consumed once even through console"),Log->Count(TEXT("SetPiece FuelLeak at")),1);
+				Test->TestEqual(TEXT("Console reopen logged separately"),Log->Count(TEXT("SetPiece FuelLeak (console)")),1);
 				TArray<FString> Lines; Text.ParseIntoArrayLines(Lines); int32 Followups=0;
 				for (const auto& L:Lines) { if (L.StartsWith(TEXT("Captain")) && (L.Contains(TEXT("We're still good")) || L.Contains(TEXT("At this burn")))) { ++Followups; } }
 				Test->TestEqual(TEXT("Follow-up once, or none after end"),Followups,Case==3?0:1); return true;
