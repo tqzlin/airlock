@@ -24,7 +24,7 @@ class AIRLOCK_API UTaskBoardWidget : public UUserWidget
 public:
 	static constexpr int32 MaxTaskRows = 8;
 	static TArray<FTaskBoardRow> BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-		const TArray<FCargoCrateState>& Cargo = {});
+		const TArray<FCargoCrateState>& Cargo = {}, const FAtmosphereState* Air = nullptr);
 	/** Called by the local controller, including while collapsed; handles late replication and seamless travel. */
 	void UpdateState(AAirlockGameState* State);
 

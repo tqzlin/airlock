@@ -11,9 +11,16 @@
 #include "Core/AirlockGameState.h"
 
 TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-	const TArray<FCargoCrateState>& Cargo)
+	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air)
 {
 	TArray<FTaskBoardRow> Rows;
+	if (Air && Air->Ppm >= FAtmosphereRates().WarnPpm)
+	{
+		const FText Action = Air->bScrubDisabled ? NSLOCTEXT("Airlock", "AirTaskDisabled", "repair life support")
+			: Air->ScrubMode == EScrubMode::Hazard ? NSLOCTEXT("Airlock", "AirTaskScrubbing", "scrubbing") : NSLOCTEXT("Airlock", "AirTaskScrub", "scrub");
+		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "AirTask", "Hold air {0} ppm - {1}"),
+			FText::AsNumber(FMath::FloorToInt(Air->Ppm)), Action), Air->Ppm >= FAtmosphereRates().DangerPpm });
+	}
 	const float Warn = FCargoRates().WarnTemperature;
 	TArray<FCargoCrateState> Heating;
 	for (const auto& Crate : Cargo)
@@ -130,7 +137,7 @@ void UTaskBoardWidget::RefreshRows()
 	TaskRows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
-	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo))
+	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(Row.Text);

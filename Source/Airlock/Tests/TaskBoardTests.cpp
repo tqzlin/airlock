@@ -1,5 +1,6 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Misc/AutomationTest.h"
+#include "Ship/ShipAtmosphere.h"
 #include "UI/TaskBoardWidget.h"
 #include "Ship/ShipLayouts.h"
 #include "Ship/CargoLayouts.h"
@@ -72,6 +73,36 @@ bool FCargoTaskRowsTest::RunTest(const FString& Parameters)
 	Cargo.PickUp(TEXT("C2"));
 	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo.Crates());
 	TestTrue(TEXT("Hot carried remains a cooling task"), Rows[0].Text.ToString().StartsWith(TEXT("Cool crate C2")));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAirTaskRowsTest, "Airlock.Atmosphere.TaskBoardAirPriorityWordsAndCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FAirTaskRowsTest::RunTest(const FString& Parameters)
+{
+	FAtmosphereState Air;
+	Air.Ppm = 19;
+	TestEqual(TEXT("Below warning no row"), UTaskBoardWidget::BuildRows({}, {}, {}, &Air)[0].Text.ToString(), FString(TEXT("All systems nominal")));
+	Air.Ppm = 20;
+	TestEqual(TEXT("Warning starts exactly at 20"), UTaskBoardWidget::BuildRows({}, {}, {}, &Air)[0].Text.ToString(), FString(TEXT("Hold air 20 ppm - scrub")));
+	Air.Ppm = 32.9f;
+	for (const EScrubMode Mode : { EScrubMode::Off, EScrubMode::Normal, EScrubMode::Hazard })
+	{
+		Air.ScrubMode = Mode;
+		const auto Row = UTaskBoardWidget::BuildRows({}, {}, {}, &Air)[0];
+		TestEqual(TEXT("Scrub wording and whole ppm"), Row.Text.ToString(), FString(Mode == EScrubMode::Hazard ? TEXT("Hold air 32 ppm - scrubbing") : TEXT("Hold air 32 ppm - scrub")));
+		TestFalse(TEXT("Below danger not red"), Row.bFailed);
+	}
+	Air.bScrubDisabled = true;
+	TestEqual(TEXT("Disabled wording wins over mode"), UTaskBoardWidget::BuildRows({}, {}, {}, &Air)[0].Text.ToString(), FString(TEXT("Hold air 32 ppm - repair life support")));
+	Air.Ppm = 50;
+	TestTrue(TEXT("Red exactly at danger"), UTaskBoardWidget::BuildRows({}, {}, {}, &Air)[0].bFailed);
+	TArray<FCargoCrateState> Cargo;
+	for (int32 I = 0; I < 10; ++I) { FCargoCrateState C; C.Id = *FString::Printf(TEXT("C%d"), I); C.bVolatile = true; C.Temperature = 80; Cargo.Add(C); }
+	const auto Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, &Air);
+	TestTrue(TEXT("Air precedes hottest cargo"), Rows[0].Text.ToString().StartsWith(TEXT("Hold air")));
+	TestTrue(TEXT("Heating order still follows"), Rows[1].Text.ToString().StartsWith(TEXT("Cool crate C0")));
+	TestEqual(TEXT("Eight plus overflow"), Rows.Num(), UTaskBoardWidget::MaxTaskRows + 1);
+	TestEqual(TEXT("Extra air row counted in overflow"), Rows.Last().Text.ToString(), FString(TEXT("+3 more")));
 	return true;
 }
 #endif
