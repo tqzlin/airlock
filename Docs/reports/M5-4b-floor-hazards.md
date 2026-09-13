@@ -359,3 +359,82 @@ Final checks after both mandatory proofs: editor PID 22824 is listening on **127
 `is_dirty=false`; `PlayNetMode=PIE_Standalone`, `PlayNumberOfClients=1`. Evidence:
 [final editor state](../../Saved/m5-4b-final-editor.txt). The editor is left open. All task work and this report
 are committed on `astra/m5-4b-floor-hazards`; main was not changed.
+
+## Reviewer's verification (Claude, 2026-09-13 afternoon)
+
+Merged into `main` as `2864ed2` (`git merge --no-ff` from `096386b`; the merged tree is the branch's `e05d2cb`
+exactly, nothing outside the brief's allowed files). Rebuilt in `Airlock\` (`Result: Succeeded`) and the headless
+suite on the merged tree: **158 passed, 0 failed, 0 not run** (`Saved\Automation\Report\index.json`, 12:06:03).
+
+The twelve proofs in sequence on that binary, one editor (port 8000), single-player play settings forced through
+the MCP first, 12:07 to 12:29:
+
+| Proof | Exit | Tail |
+| --- | --- | --- |
+| loop | 0 | `LOOP OK: hub spawn -> booked -> Dock B -> Hauler_Mk1 PlayerStart -> exit -> hub PlayerStart, voyage complete` |
+| ship-graph | 0 | `GRAPH OK: seven nominal modules -> coolant leak -> degraded coolant drifts core -> hold repairs line -> coolant restored -> hub PlayerStart, empty graph` |
+| incidents | 0 | `INCIDENTS OK: solo schedule -> teaching leak and captain -> hold repair clears row -> core task -> climax -> no replay -> hub` |
+| voyage-clock | 0 | `CLOCK OK: 75 seconds remaining -> one-minute captain line -> automatic return card -> StationHub PlayerStart, voyage complete` |
+| level-pass | 0 | `LEVEL OK: hold -> engineering (2 lines repaired) -> corridor (2 lines repaired) -> galley -> bridge seat, board, stand -> hub PlayerStart` |
+| cargo | 0 | `CARGO OK: secure two -> shift and cool C2 -> vent C4 -> 2/4 intact, pay 400 -> hub last run` |
+| atmosphere | 0 | `ATMOSPHERE OK: warm cask puffs -> hazard scrub -> rack -> blackout and recovery -> clean air, pay 400 -> hub last run` |
+| fuel | 0 | `FUEL OK: feed leak -> shut -> bypass -> burn C3/C1 -> clear injectors -> clean air, pay 270 -> hub last run` |
+| refinery | 0 | `REFINERY OK: reset -> priority contract, 12 casks -> 2 intact -> refinery dock, +20 t -> hub board -> empty run adds 0 -> reset` |
+| legibility | 0 | `LEGIBILITY OK: Priority hold -> north/south labels -> carried label hidden -> drop -> cargo summaries -> engineering panel -> feed steam -> refinery result -> hub, save reset` |
+| two-clients | 0 | `TWO CLIENTS OK: server + client 1 on the hub -> the client crosses Dock B, both aboard -> client carries and secures C1 -> client at the seat -> client scrubs -> cheat refused at DevCheats 0 -> dock, both home, the second arrival steps aside`; play settings restored |
+| floor | 0 | `FLOOR OK: Milk run -> C1/C3 secured, C2 racked -> floor: three casks, six fixtures, 36 controls -> Still 2 by-hand batch floods 200 L into S1 -> C3 stumble and put-down -> six-second squeegee clears S1 -> C1/C3 in Still 1 and C2 in Still 2 done, 1853 L diesel, 1 spill, 0 pops -> horn -> combined result (3/3 refined, +15 t), undocking card -> hub board, save reset` |
+
+The floor proof's fresh `LogAirlock` lines on the merged tree (`Saved\AgentCaptures\M5-4b\floor-log.txt`, 12:29):
+
+```text
+Ship result: 3/4 crates intact, 0 vented, 1 loose, hull 87.28%, pay 625, air 0 ppm, 0 blackouts, 0 burned (3 casks to the floor)
+Slot clock started: 600s endServerTime=635.644 casks=3
+Spill S1 by Still_2: 200 L (r 200 cm)
+Okafor: Flood on Still 2 - crude over the lip. Feed down, and mind your footing, it's slick.
+Stumble AirlockCharacter_0 drops C3 in S1
+PutDown C3 by AirlockCharacter_0
+Okafor: Cask down - AirlockCharacter_0 went over in the crude. Get it up before it warms.
+Spill S1 cleared by AirlockCharacter_0
+Spill S1 gone
+No spills
+FloorCriticals 0
+Floor result: floor: 3/3 casks refined, 1853 L diesel, 806 L tar, 1 spill, 0 pops, 0 criticals, pay 847, fuel +15 t
+Voyage result: 3/4 crates intact, 0 vented, 1 loose, hull 87.28%, pay 1472, air 0 ppm, 0 blackouts, 0 burned | floor: 3/3 casks refined, 1853 L diesel, pay 847, fuel +15 t
+```
+
+Captures inspected from this batch: `floor-spill.png` (the dark disc under Still 2's handle row, `SPILL` / `193 L -
+squeegee (hold E)`, the board's `Spill by Still_2 - squeegee`), `floor-squeegee.png` (the hold bar at a third,
+Okafor's stumble caption, `164 L`, and C3 sitting up on the control row - the landing flaw below),
+`floor-cleared.png`, `hub-board-floor.png`.
+
+### Review notes (accepted as is; nothing changed on the branch)
+
+- **The code follows the brief.** The hazard model is touched only through the game mode, the mirror is the only
+  thing actors read, spawn and destruction happen in one place, only `Spill` events reach the model, the dwell
+  clock resets on every detach path, and the still's burst keys off the replicated transition with a late-join
+  baseline. The tests pin what the brief asked for, including the two measured facts.
+- **The put-down surface** (Astra's first open question) is the one visible defect: the puddle's marker box and
+  the still controls' marker boxes block Visibility, and `PutDownLocation`'s floor trace is a Visibility trace,
+  so a cask dropped in a puddle rests 30 cm up in the isolated test and 96 cm up on a control marker in the live
+  viewpoint. The fix belongs in M5-5 (Claude): the put-down trace ignores interaction markers, or the markers
+  move to their own object type. The brief's marker prescription was mine, so this is not held against the branch.
+- **`Spill S1 cleared by <Pawn>` is logged for a partial pass too** (a 400 L puddle keeps 100 L). Wording for
+  M5-5 (`Spill S1 squeegeed by <Pawn>: 300 L off, 100 L left`), not a behaviour change.
+- **The 47 cm dry ring** is the truth of the existing hold reach (a 312.5 cm sphere from an origin 96 cm up); the
+  brief's 62 cm was a horizontal figure. Accepted as measured; a different reach or puddle cap needs a brief.
+- **The proof's `AirlockVoyageClock 75` right after the director starts** is accepted as proof set-up: today's
+  Milk-run schedule targets Clamp_3 with a cargo shift that the docking jump consumes, which released C3 at the
+  dock in Astra's first run. The game did what it should; the three-cask delivery needed the clamps empty when the
+  skipped incidents fire. The queued cask's `Running cask=C3` in place of the old `Idle` wait is the model's real
+  behaviour (a queued hopper starts the next cask on the tick after `BatchDone`).
+- **The spill label among the control labels** is crowded but readable from the walkway; it joins M5-5's
+  legibility pass with the gauge stack.
+- **Two crew on the floor with a puddle** (client-side shrink and removal, the owner-only speed, the pop baseline
+  on a late joiner) is proven by automation and the single-player proof only; the two-client proof stays a
+  regression proof. Listed under STATUS's open follow-ups.
+
+Reproduce the reviewer's batch from `Airlock\` (the editor open, PIE stopped): `Scripts\close-editor.ps1`,
+`Scripts\build-editor.bat`, `Scripts\run-tests.bat Airlock` (read `Saved\Automation\Report\index.json`),
+`Scripts\run-editor.bat`, force single-player play settings through `Scripts\lib\mcp.ps1` (HANDOFF section 5),
+then `Scripts\verify-<name>.ps1` for loop, ship-graph, incidents, voyage-clock, level-pass, cargo, atmosphere,
+fuel, refinery, legibility, two-clients, floor - about 23 minutes.
