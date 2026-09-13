@@ -4,7 +4,7 @@
 # Slate snapshots omit the PIE HUD; visually review the captures for row/caption visibility.
 # Default follows the brief literally. -ShortFollowup stages 80 units before the leak
 # to exercise the short-reserve branch; at 90 units the +10 s follow-up still has reserve.
-param([switch]$ShortFollowup)
+param([switch]$ShortFollowup, [switch]$ProbePositions)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib/mcp.ps1')
 $proofDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'Saved/AgentCaptures/M3-6'
@@ -75,10 +75,32 @@ try {
         $dirty = Mcp-Call $TS_Asset 'is_dirty' @{asset_path=$map}
         if (-not $dirty.ok -or $dirty.text -match 'true') { throw "$map must be clean before this proof" }
     }
+    if ($ProbePositions) { $null=Mcp-Text $TS_Scene 'load_level' @{level_path='/Game/Maps/Ships/Hauler_Mk1'} }
+    $startX=if ($ProbePositions) { -6660 } else { -5640 }
     $script:ProofStart = [DateTime]::UtcNow
-    $start = Mcp-Call $TS_App 'StartPIE' @{options=@{bSimulate=$false;playMode='PlayMode_InViewPort';warmupSeconds=5;startTransform=@{location=@{x=-5640;y=1560;z=118};rotation=@{pitch=0;yaw=0;roll=0};scale=@{x=1;y=1;z=1}}}}
+    $start = Mcp-Call $TS_App 'StartPIE' @{options=@{bSimulate=$false;playMode='PlayMode_InViewPort';warmupSeconds=5;startTransform=@{location=@{x=$startX;y=1560;z=118};rotation=@{pitch=0;yaw=0;roll=0};scale=@{x=1;y=1;z=1}}}}
     if (-not $start.ok) { throw $start.text }
     $script:StartedPIE=$true
+    if ($ProbePositions) {
+        $positions=foreach ($spot in @(@('FeedValve',-1130,280),@('BypassValve',-1130,700),@('FuelIntake',-1200,600),@('FeedWalkway',-1300,280),@('BypassWalkway',-1300,700),@('IntakeWalkway',-1300,600),@('EnginesWalkway',-1300,880))) {
+            Send-FuelCommand "AirlockWarp $($spot[1]) $($spot[2]) 118"
+            Start-Sleep -Seconds 4
+            Send-FuelCommand 'AirlockWhere'
+            $line=Wait-FuelProofLine ': Where:' 5 $script:LastCommandAt
+            $match=[regex]::Match($line,'pawn=.*? at X=([-0-9.]+) Y=([-0-9.]+) Z=([-0-9.]+)')
+            if (-not $match.Success) { throw "Unparseable probe: $line" }
+            $x=[double]::Parse($match.Groups[1].Value,[Globalization.CultureInfo]::InvariantCulture)
+            $y=[double]::Parse($match.Groups[2].Value,[Globalization.CultureInfo]::InvariantCulture)
+            $z=[double]::Parse($match.Groups[3].Value,[Globalization.CultureInfo]::InvariantCulture)
+            if ([math]::Abs(($z-96)-22) -gt 2) { throw "Probe missed the engineering floor: $line" }
+            if ($spot[0] -like '*Walkway' -and ([math]::Abs($x-$spot[1]) -gt 1 -or [math]::Abs($y-$spot[2]) -gt 1)) { throw "Walkway probe moved sideways: $line" }
+            [pscustomobject]@{Id=$spot[0];RequestedX=$spot[1];RequestedY=$spot[2];LayoutZ=22;PawnX=$x;PawnY=$y;PawnZ=$z;FeetZ=$z-96}
+        }
+        $positions | Export-Csv (Join-Path $proofDir 'fuel-position-probes.csv') -NoTypeInformation
+        $positions | Format-Table | Out-Host
+        Write-Host 'FUEL POSITIONS OK: fixtures and all four engineering interaction spots reach the floor'
+        return
+    }
     Send-FuelCommand 'AirlockWhere'
     Assert-FuelLocation 'StationHub' -5640
     Send-FuelCommand 'AirlockWarp -4700 1560 116'
@@ -181,9 +203,10 @@ try {
 }
 finally {
     if ($script:StartedPIE) {
-        try { Get-FuelProofLines | Set-Content -LiteralPath (Join-Path $proofDir 'fuel-log.txt') -Encoding UTF8 }
+        try { Get-FuelProofLines | Set-Content -LiteralPath (Join-Path $proofDir $(if ($ProbePositions) { 'position-probe-log.txt' } else { 'fuel-log.txt' })) -Encoding UTF8 }
         finally { $stop=Mcp-Call $TS_App 'StopPIE' @{}; if (-not $stop.ok) { throw "StopPIE failed: $($stop.text)" } }
     }
+    if ($ProbePositions) { $null=Mcp-Text $TS_Scene 'load_level' @{level_path='/Game/Maps/StationHub'} }
     foreach ($map in @('/Game/Maps/StationHub','/Game/Maps/Ships/Hauler_Mk1')) {
         $dirty=Mcp-Call $TS_Asset 'is_dirty' @{asset_path=$map}
         if (-not $dirty.ok -or $dirty.text -match 'true') { throw "$map is dirty after the proof" }

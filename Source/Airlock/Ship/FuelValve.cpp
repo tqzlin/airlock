@@ -43,9 +43,9 @@ void AFuelValve::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(16); Label->SetRelativeLocation(FVector(0,0,155));
+		Label->SetWorldSize(16); Label->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-35,0,155)));
 		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
-		LeakLight->SetRelativeLocation(FVector(-25,0,110));
+		LeakLight->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-25,0,110)));
 		LeakLight->SetAttenuationRadius(140); LeakLight->SetIntensity(80);
 		LeakLight->SetLightColor(FLinearColor::Red);
 		LeakFX->SetRelativeLocation(FVector(0,0,100));

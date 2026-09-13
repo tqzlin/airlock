@@ -40,9 +40,9 @@ void ABypassValve::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(16); Label->SetRelativeLocation(FVector(0,0,155));
+		Label->SetWorldSize(16); Label->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-35,0,155)));
 		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
-		BypassLight->SetRelativeLocation(FVector(-25,0,110));
+		BypassLight->SetRelativeLocation(Spec.Transform.InverseTransformVectorNoScale(FVector(-25,0,110)));
 		BypassLight->SetAttenuationRadius(140); BypassLight->SetIntensity(80);
 		BypassLight->SetLightColor(FLinearColor(1.f,.45f,.02f));
 		bVisualsReady = true;

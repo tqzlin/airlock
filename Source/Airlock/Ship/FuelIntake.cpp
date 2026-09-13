@@ -36,7 +36,7 @@ void AFuelIntake::OnRep_Spec()
 	{
 		Body->SetRelativeScale3D(Spec.Scale);
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FVector(.3,.3,1.4));
-		Label->SetWorldSize(16); Label->SetRelativeLocation(FVector(0,0,155));
+		Label->SetWorldSize(16); Label->SetRelativeLocation(FVector(0,0,110));
 		Label->SetRelativeRotation(FRotator(0, Spec.LabelYaw - Spec.Transform.Rotator().Yaw, 0));
 		bVisualsReady = true;
 	}
