@@ -5,7 +5,8 @@
 #include "CargoModel.generated.h"
 
 UENUM()
-enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented, Burned };
+/** Loaded (M5-3a): in a still's hopper on the refinery floor - off the deck like Burned, but crude that will be refined. */
+enum class ECargoState : uint8 { Loose, Carried, Secured, Racked, Vented, Burned, Loaded };
 
 USTRUCT()
 struct AIRLOCK_API FCargoCrateState
@@ -62,6 +63,8 @@ struct AIRLOCK_API FVoyageResult
 	UPROPERTY() bool bLateDock = false;
 	/** Preserves pre-fuel summary strings when Tally is called without fuel data. */
 	UPROPERTY() bool bHasFuelData = false;
+	/** The ship's fuel units at the dock (M5-3a; -1 without fuel data): the floor's diesel refuels what is missing first. */
+	UPROPERTY() float FuelUnitsAtDock = -1.f;
 	/** The intact casks by id in manifest order, and which of them are light (M5-2): what the refinery floor receives. */
 	UPROPERTY() TArray<FName> IntactCasks;
 	UPROPERTY() TArray<FName> IntactLightCasks;
@@ -100,6 +103,10 @@ public:
 	bool PickUp(FName CrateId);
 	bool PutDown(FName CrateId);
 	bool Consume(FName CrateId);
+	/** A cask into a still's hopper (M5-3a): Loose or Carried -> Loaded. */
+	bool Load(FName CrateId);
+	/** Burned or Loaded: gone from the deck, inert, hidden by the crate actor. */
+	static bool IsConsumed(ECargoState State) { return State == ECargoState::Burned || State == ECargoState::Loaded; }
 	bool Place(FName CrateId, FName SlotId);
 	bool Release(FName SlotId);
 	bool SetTemperature(FName CrateId, float Temperature);

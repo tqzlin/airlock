@@ -155,6 +155,18 @@ public:
 	UFUNCTION(Server, Reliable) void ServerScrubFromConsole(const FString& Mode);
 	UFUNCTION(Server, Reliable) void ServerAirSet(float Ppm);
 	UFUNCTION(Server, Reliable) void ServerExpose(float Percent);
+	// The refinery floor's stills (M5-3a; the console until M5-3b's actors): `AirlockRefinery` (one line per still and
+	// the tank), `AirlockKnob <Still> <Heat|Feed|Vent> <0..20>`, `AirlockKnobStep <Still> <Knob> <delta>`,
+	// `AirlockStillLoad <Still> <Cask>` (no reach), `AirlockStill <Still> <Reset|Purge|Scrape|Repair|Calibrate>`.
+	UFUNCTION(Exec) void AirlockRefinery();
+	UFUNCTION(Exec) void AirlockKnob(FName StillId, FString Knob, int32 Steps);
+	UFUNCTION(Exec) void AirlockKnobStep(FName StillId, FString Knob, int32 Delta);
+	UFUNCTION(Exec) void AirlockStillLoad(FName StillId, FName CaskId);
+	UFUNCTION(Exec) void AirlockStill(FName StillId, FString Lever);
+	UFUNCTION(Server, Reliable) void ServerRefineryStatus();
+	UFUNCTION(Server, Reliable) void ServerKnob(FName StillId, const FString& Knob, int32 Steps, bool bStep);
+	UFUNCTION(Server, Reliable) void ServerStillLoad(FName StillId, FName CaskId);
+	UFUNCTION(Server, Reliable) void ServerStillLever(FName StillId, const FString& Lever);
 
 	/** Control-room seat by station id (same server path as the key; must be within reach) / stand up. */
 	UFUNCTION(Exec) void AirlockSit(FName StationId);

@@ -27,6 +27,7 @@
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
 #include "Ship/FuelIntake.h"
+#include "Ship/RefineryLayouts.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerState.h"
@@ -584,6 +585,7 @@ void AAirlockPlayerController::ServerCargoTally_Implementation()
 	if (const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr)
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Tally now: %s"), *GM->CargoTally().Summary());
+		if (GM->RefineryHasFloor()) { UE_LOG(LogAirlock, Log, TEXT("Floor tally now: %s"), *GM->RefineryTally().Summary()); }
 	}
 	else { UE_LOG(LogAirlock, Log, TEXT("Tally rejected: no game mode")); }
 }
@@ -692,4 +694,45 @@ void AAirlockPlayerController::ServerFeedById_Implementation(FName CrateId)
 	}
 	for (TActorIterator<AFuelIntake> It(GetWorld()); It; ++It) { Crew->ServerFeedCask(*It); return; }
 	UE_LOG(LogAirlock, Log, TEXT("Feed rejected: no intake on this section"));
+}
+
+// --- The refinery floor's stills (M5-3a) ---
+void AAirlockPlayerController::AirlockRefinery() { ServerRefineryStatus(); }
+void AAirlockPlayerController::AirlockKnob(FName StillId, FString Knob, int32 Steps) { ServerKnob(StillId, Knob, Steps, false); }
+void AAirlockPlayerController::AirlockKnobStep(FName StillId, FString Knob, int32 Delta) { ServerKnob(StillId, Knob, Delta, true); }
+void AAirlockPlayerController::AirlockStillLoad(FName StillId, FName CaskId) { ServerStillLoad(StillId, CaskId); }
+void AAirlockPlayerController::AirlockStill(FName StillId, FString Lever) { ServerStillLever(StillId, Lever); }
+void AAirlockPlayerController::ServerRefineryStatus_Implementation()
+{
+	if (!CheatAllowed(TEXT("AirlockRefinery"))) { return; }
+	const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Refinery status rejected: no game mode")); return; }
+	TArray<FString> Lines;
+	GM->RefinerySummary().ParseIntoArrayLines(Lines);
+	for (const FString& Line : Lines) { UE_LOG(LogAirlock, Log, TEXT("%s"), *Line); }
+}
+void AAirlockPlayerController::ServerKnob_Implementation(FName StillId, const FString& Knob, int32 Steps, bool bStep)
+{
+	if (!CheatAllowed(bStep ? TEXT("AirlockKnobStep") : TEXT("AirlockKnob"))) { return; }
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Knob rejected: no game mode")); return; }
+	ERefineryKnob Which;
+	if (!RefineryLayouts::ParseKnob(Knob, Which)) { UE_LOG(LogAirlock, Log, TEXT("Knob rejected: unknown knob %s (Heat|Feed|Vent)"), *Knob); return; }
+	if (bStep) { GM->RefineryStepKnob(StillId, Which, Steps); } else { GM->RefinerySetKnob(StillId, Which, Steps); }
+}
+void AAirlockPlayerController::ServerStillLoad_Implementation(FName StillId, FName CaskId)
+{
+	if (!CheatAllowed(TEXT("AirlockStillLoad"))) { return; }
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Refinery load rejected: no game mode")); return; }
+	GM->RefineryLoadHopper(StillId, CaskId);
+}
+void AAirlockPlayerController::ServerStillLever_Implementation(FName StillId, const FString& Lever)
+{
+	if (!CheatAllowed(TEXT("AirlockStill"))) { return; }
+	auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	if (!GM) { UE_LOG(LogAirlock, Log, TEXT("Still rejected: no game mode")); return; }
+	ERefineryLever Which;
+	if (!RefineryLayouts::ParseLever(Lever, Which)) { UE_LOG(LogAirlock, Log, TEXT("Still rejected: unknown lever %s (Reset|Purge|Scrape|Repair|Calibrate)"), *Lever); return; }
+	GM->RefineryLever(StillId, Which);
 }

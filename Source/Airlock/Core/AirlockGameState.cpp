@@ -2,6 +2,7 @@
 
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoLayouts.h"
+#include "Ship/RefineryLayouts.h"
 #include "Net/UnrealNetwork.h"
 
 AAirlockGameState::AAirlockGameState()
@@ -33,6 +34,7 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, ShipLines);
 	DOREPLIFETIME(AAirlockGameState, Cargo);
 	DOREPLIFETIME(AAirlockGameState, Fuel);
+	DOREPLIFETIME(AAirlockGameState, Refinery);
 	DOREPLIFETIME(AAirlockGameState, Atmosphere);
 	DOREPLIFETIME(AAirlockGameState, PuffingCrates);
 	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
@@ -89,3 +91,11 @@ void AAirlockGameState::PublishFuel(const FFuelState& InFuel)
 	Fuel = InFuel; ForceNetUpdate(); OnRep_Fuel();
 }
 void AAirlockGameState::OnRep_Fuel() { OnShipGraphChanged.Broadcast(); }
+
+void AAirlockGameState::PublishRefinery(const FRefineryState& InRefinery)
+{
+	if (!HasAuthority() || Refinery == InRefinery) { return; }
+	Refinery = InRefinery; ForceNetUpdate(); OnRep_Refinery();
+}
+void AAirlockGameState::OnRep_Refinery() { OnShipGraphChanged.Broadcast(); }
+bool AAirlockGameState::RefineryHasFloor() const { return RefineryLayouts::Find(CurrentSectionId) != nullptr; }

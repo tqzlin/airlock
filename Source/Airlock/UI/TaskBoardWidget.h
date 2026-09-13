@@ -5,6 +5,7 @@
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
 #include "Ship/FuelSystem.h"
+#include "Ship/RefineryModel.h"
 #include "TaskBoardWidget.generated.h"
 
 class AAirlockGameState;
@@ -17,17 +18,18 @@ struct FTaskBoardRow
 	bool bFailed = false;
 };
 
-/** Passive local HUD: task rows come exclusively from the replicated ship graph. */
+/** Passive local HUD: task rows come exclusively from the replicated ship graph (and, on the floor, the refinery state). */
 UCLASS()
 class AIRLOCK_API UTaskBoardWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
 	static constexpr int32 MaxTaskRows = 8;
+	/** `Refinery` (M5-3a) switches the board to the floor: still rows, `Load crate` instead of `Cool crate`, no `Secure` rows. */
 	static TArray<FTaskBoardRow> BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
 		const TArray<FCargoCrateState>& Cargo = {}, const FAtmosphereState* Air = nullptr, const FFuelState* Fuel = nullptr,
-		bool bSummaries = false);
-	static FText BuildReadout(const FAtmosphereState* Air, const FFuelState* Fuel, int32 SecondsToDock);
+		bool bSummaries = false, const FRefineryState* Refinery = nullptr);
+	static FText BuildReadout(const FAtmosphereState* Air, const FFuelState* Fuel, int32 SecondsToDock, bool bFloor = false);
 	/** Called by the local controller, including while collapsed; handles late replication and seamless travel. */
 	void UpdateState(AAirlockGameState* State);
 
@@ -43,6 +45,7 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> HeaderText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ReadoutText;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> TaskRows;
 	TWeakObjectPtr<AAirlockGameState> ObservedState;

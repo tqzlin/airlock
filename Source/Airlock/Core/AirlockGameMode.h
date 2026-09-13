@@ -11,6 +11,8 @@
 #include "Ship/ShipAtmosphere.h"
 #include "Ship/CargoLayouts.h"
 #include "Ship/FuelSystem.h"
+#include "Ship/RefineryModel.h"
+#include "Ship/RefineryLayouts.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -78,6 +80,20 @@ public:
 	EScrubMode AirGetScrubMode() const;
 	FString AirSummary() const;
 	void NotifyBlackout(APawn* Pawn);
+	// --- The refinery model on the floor (M5-3a): server API for the console helpers and M5-3b's actors ---
+	/** True on the section whose fixture table has stills (the floor). */
+	bool RefineryHasFloor() const;
+	/** A cask on the floor (Loose or Carried) into a still's hopper: the crate becomes Loaded and hides. */
+	bool RefineryLoadHopper(FName Still, FName Cask);
+	bool RefinerySetKnob(FName Still, ERefineryKnob Knob, int32 Steps);
+	bool RefineryStepKnob(FName Still, ERefineryKnob Knob, int32 Delta);
+	/** A lever hold completing: Reset (a popped still), Purge (a flashed one), Scrape, Repair, Calibrate. */
+	bool RefineryLever(FName Still, ERefineryLever Lever);
+	/** The floor tally now (records nothing): blackouts on the floor are its criticals, the ship result's fuel gap is refuelled first. */
+	FFloorResult RefineryTally() const;
+	FString RefinerySummary() const;
+	FString RefineryStillReadout(FName Still) const;
+	const FRefineryModel& GetRefineryModel() const { return RefineryModel; }
 	int32 GetBlackoutCount() const { return BlackoutCount; }
 	UIncidentDirectorComponent* GetIncidentDirector() const { return IncidentDirector; }
 
@@ -157,6 +173,14 @@ private:
 	void BuildFloorFixtures();
 	/** `Captain <Name>` on the ship, `Okafor` on the floor: the log prefix and the caption speaker. */
 	FString SpeakerName() const;
-	static constexpr int32 FloorCrudeSaleCr = 40;
+	// --- The refinery model on the floor (M5-3a) ---
+	FRefineryModel RefineryModel;
+	bool bFirstBatchSpoken = false;
+	void BuildRefinery();
+	void TickRefinery();
+	void PublishRefinery();
+	void ApplyRefineryEvents(const TArray<FRefineryEvent>& Events);
+	/** Okafor's event lines with a 20 s cooldown per cue (the same map as the air lines). */
+	void SpeakFloorLine(FName Cue, const FText& Line);
 	TSoftObjectPtr<UWorld> FloorLevel = TSoftObjectPtr<UWorld>(FSoftObjectPath(TEXT("/Game/Maps/RefineryFloor.RefineryFloor")));
 };

@@ -149,7 +149,11 @@ bool FCheatGateEveryRpcTest::RunTest(const FString& Parameters)
 		PC->ServerBaseFuel(0, 0); ++Calls; // the read-only mode: a regression here must never touch the real save slot
 		PC->ServerSitByStationId(TEXT("Bridge")); ++Calls;
 		PC->ServerStandUpFromConsole(); ++Calls;
-		TestEqual(TEXT("Twenty-seven helpers"), Calls, 27);
+		PC->ServerRefineryStatus(); ++Calls; // M5-3a: the floor's console helpers
+		PC->ServerKnob(TEXT("Still_1"), TEXT("Heat"), 8, false); ++Calls;
+		PC->ServerStillLoad(TEXT("Still_1"), TEXT("C1")); ++Calls;
+		PC->ServerStillLever(TEXT("Still_1"), TEXT("Reset")); ++Calls;
+		TestEqual(TEXT("Thirty-one helpers"), Calls, 31);
 		TestEqual(TEXT("Every call refused"), Log.Count(TEXT("Cheat ")), Calls);
 		TestEqual(TEXT("Every refusal names the switch"), Log.Count(TEXT("refused for")), Calls);
 		TestEqual(TEXT("No status line leaked"), Log.Count(TEXT("Ship ")), 0);
