@@ -146,4 +146,17 @@ private:
 	void ScheduleNextVoyageEvent();
 	void TickVoyageClock();
 	void ReturnToHub();
+
+	// --- The refinery floor (M5-2) ---
+	/** The ship section of the pending voyage (its ShipClassId): docking there goes to the floor, not the hub. */
+	bool IsShipSection() const;
+	bool IsFloorSection() const;
+	/** The ship's docking: keep the ship tally on the subsystem and travel to the floor with the pending voyage intact. */
+	void DockAtFloor();
+	void RecordShipResult();
+	void BuildFloorFixtures();
+	/** `Captain <Name>` on the ship, `Okafor` on the floor: the log prefix and the caption speaker. */
+	FString SpeakerName() const;
+	static constexpr int32 FloorCrudeSaleCr = 40;
+	TSoftObjectPtr<UWorld> FloorLevel = TSoftObjectPtr<UWorld>(FSoftObjectPath(TEXT("/Game/Maps/RefineryFloor.RefineryFloor")));
 };

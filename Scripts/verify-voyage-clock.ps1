@@ -89,6 +89,12 @@ try {
     Save-VoyageProofCapture 'return-card-1'
     Save-VoyageProofCapture 'return-card-2'
     Save-VoyageProofCapture 'return-card-3'
+    # Since M5-2 the docking lands on the refinery floor; the slot's end is the second hop home.
+    $null = Wait-VoyageProofLine 'Section RefineryFloor:' 45 $script:LastCommandAt
+    $null = Wait-VoyageProofLine 'Slot clock started' 30 $script:LastCommandAt
+    Start-Sleep -Seconds 4
+    Send-VoyageCommand 'AirlockVoyageClock 5'
+    $null = Wait-VoyageProofLine 'Transition card: UNDOCKING - HOME TO THE VELL EXTRACTOR' 30 $script:LastCommandAt
     $null = Wait-VoyageProofLine 'Arrival spawn .*X=-5640\.' 45 $script:LastCommandAt
     Start-Sleep -Seconds 8
     Send-VoyageCommand 'AirlockWhere'

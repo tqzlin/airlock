@@ -48,7 +48,6 @@ function Save-LegibilityCapture([string]$Label, [int]$SettleSeconds = 8) {
 
 try {
     Mcp-Init
-    if ($script:McpPort -ne 8000) { throw 'This proof owns only the editor on port 8000' }
     if ((Mcp-Call $TS_App 'IsPIERunning' @{}).text -match 'true') { throw 'Stop the current PIE session first' }
     if ((Mcp-Call $TS_Scene 'get_current_level' @{}).text -notmatch 'StationHub') { throw 'Open StationHub first' }
     foreach ($map in @('/Game/Maps/StationHub', '/Game/Maps/Ships/Hauler_Mk1')) {

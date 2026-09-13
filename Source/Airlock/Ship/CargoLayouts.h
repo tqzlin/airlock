@@ -44,4 +44,6 @@ namespace CargoLayouts
 	AIRLOCK_API const FCargoLayout* Find(FName SectionId);
 	/** The manifest of a contract tier (M3-7): CaskCount casks (up to 12), every second one volatile up to VolatileCount, CaskCount * 3 / 4 clamps, one rack. */
 	AIRLOCK_API FCargoLayout Build(FName SectionId, int32 CaskCount, int32 VolatileCount);
+	/** The refinery floor's staging spots (M5-2): the run's intact casks by id in manifest order, the light ones volatile; no slots. */
+	AIRLOCK_API FCargoLayout BuildFloor(const TArray<FName>& Casks, const TArray<FName>& LightCasks);
 }

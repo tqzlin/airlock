@@ -45,6 +45,7 @@ FText UVoyageBoardWidget::DescribeResult(const FVoyageResult& Result)
 	}
 	if (Result.CratesBurned > 0) { Base = FText::Format(NSLOCTEXT("Airlock", "LastRunBurned", "{0} - {1} burned"), Base, FText::AsNumber(Result.CratesBurned)); }
 	if (Result.bLateDock) { Base = FText::Format(NSLOCTEXT("Airlock", "LastRunLate", "{0} - late"), Base); }
+	if (Result.bHasFloor) { Base = FText::Format(NSLOCTEXT("Airlock", "LastRunFloor", "{0} - floor: {1}/{2} refined"), Base, FText::AsNumber(Result.FloorCasksRefined), FText::AsNumber(Result.FloorCasksTotal)); }
 	return Base;
 }
 FText UVoyageBoardWidget::DescribeBase(int32 Tonnes, int32 Runs, int32 Surplus, bool bHasResult)

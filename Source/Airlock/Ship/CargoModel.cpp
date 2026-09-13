@@ -178,7 +178,12 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 	{
 		if (Crate.State == ECargoState::Burned) { ++Result.CratesBurned; }
 		else if (Crate.State == ECargoState::Vented) { ++Result.CratesVented; }
-		else if (Crate.State == ECargoState::Secured || Crate.State == ECargoState::Racked) { ++Result.CratesIntact; }
+		else if (Crate.State == ECargoState::Secured || Crate.State == ECargoState::Racked)
+		{
+			++Result.CratesIntact;
+			Result.IntactCasks.Add(Crate.Id);
+			if (Crate.bVolatile) { Result.IntactLightCasks.Add(Crate.Id); }
+		}
 		else { ++Result.CratesLoose; }
 	}
 	double Sum = 0;
@@ -213,5 +218,6 @@ FString FVoyageResult::Summary() const
 		CratesIntact, CratesTotal, CratesVented, CratesLoose, ShipCondition, Pay);
 	if (DockPpm >= 0) { Text += FString::Printf(TEXT(", air %d ppm, %d blackouts"), FMath::FloorToInt(DockPpm), Blackouts); }
 	if (bHasFuelData) { Text += FString::Printf(TEXT(", %d burned%s"), CratesBurned, bLateDock ? TEXT(", late") : TEXT("")); }
+	if (bHasFloor) { Text += FString::Printf(TEXT(" | floor: %d/%d casks refined, %d L diesel, pay %d"), FloorCasksRefined, FloorCasksTotal, FloorDieselL, FloorPay); }
 	return Text;
 }

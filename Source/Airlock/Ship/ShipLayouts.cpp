@@ -67,6 +67,21 @@ const FShipLayout* Find(FName SectionId)
 		Layout.Stations.Add(Bridge);
 		return Layout;
 	}();
-	return SectionId == Hauler.SectionId ? &Hauler : nullptr;
+	// The refinery floor (M5-2): one module, the scrubber panel on the main deck's south side, so the life-support
+	// press verb, the brownout rules and the task board's air row work there unchanged. Probed like the hold's spots.
+	static const FShipLayout Floor = []
+	{
+		FShipLayout Layout;
+		Layout.SectionId = TEXT("RefineryFloor");
+		FShipModuleSpec Spec;
+		Spec.Id = TEXT("LifeSupport"); Spec.Type = EShipModuleType::LifeSupport;
+		Spec.Transform = FTransform(FRotator(0, 180, 0), FVector(-5400, 1150, 23));
+		Spec.Mesh = FSoftObjectPath(TEXT("/Game/ModSciInteriors/Meshes/SM_ElectricDistribBox.SM_ElectricDistribBox"));
+		Spec.LabelYaw = 90;
+		Layout.Modules.Add(Spec);
+		return Layout;
+	}();
+	if (SectionId == Hauler.SectionId) { return &Hauler; }
+	return SectionId == Floor.SectionId ? &Floor : nullptr;
 }
 }

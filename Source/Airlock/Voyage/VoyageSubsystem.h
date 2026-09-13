@@ -50,6 +50,10 @@ public:
 
 	void SetLastVoyageResult(const FVoyageResult& Result);
 	bool GetLastVoyageResult(FVoyageResult& OutResult) const;
+	/** The ship leg's tally, kept (not saved) between the refinery dock and the floor's end (M5-2). Server only. */
+	void SetShipResult(const FVoyageResult& Result);
+	bool GetShipResult(FVoyageResult& OutResult) const;
+	void ClearShipResult();
 
 	// --- The Rig's persistent stock (M3-7): a save-game slot per machine until M4 moves it server-side. ---
 	FString SaveSlotName = TEXT("Airlock");
@@ -69,6 +73,8 @@ private:
 	FGuid PendingVoyageId;
 	FVoyageResult LastVoyageResult;
 	bool bHasLastVoyageResult = false;
+	FVoyageResult ShipResult;
+	bool bHasShipResult = false;
 	UPROPERTY(Transient) TObjectPtr<UAirlockSaveGame> Save;
 	void SaveNow();
 };

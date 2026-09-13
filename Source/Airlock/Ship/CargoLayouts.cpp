@@ -66,9 +66,36 @@ FCargoLayout CargoLayouts::Build(FName SectionId, int32 CaskCount, int32 Volatil
 	return Layout;
 }
 
+FCargoLayout CargoLayouts::BuildFloor(const TArray<FName>& Casks, const TArray<FName>& LightCasks)
+{
+	// The floor's staging spots by the airlock (M5-2): two rows of six on the main deck's south side, 160 cm apart
+	// (a case is 120 x 68), labels facing the Y 1560 walkway. Z -65 is the deck's walking surface (probed 2026-09-13;
+	// X -6400 lands on the west platform's railing, so the rows start at -6240).
+	static const double SpotX[6] = { -6240, -6080, -5920, -5760, -5600, -5440 };
+	static const double SpotY[2] = { 1400, 1250 };
+	FCargoLayout Layout;
+	Layout.SectionId = TEXT("RefineryFloor");
+	const int32 Count = FMath::Min(Casks.Num(), 12);
+	for (int32 I = 0; I < Count; ++I)
+	{
+		FCargoCrateSpec Crate;
+		Crate.Id = Casks[I];
+		Crate.bVolatile = LightCasks.Contains(Casks[I]);
+		const double Y = SpotY[I / 6];
+		Crate.Transform = FTransform(FVector(SpotX[I % 6], Y, -65));
+		Crate.Mesh = FSoftObjectPath(CaseMesh);
+		Crate.LabelYaw = LabelYawFor(Y);
+		Layout.Crates.Add(Crate);
+	}
+	return Layout;
+}
+
 const FCargoLayout* CargoLayouts::Find(FName SectionId)
 {
 	// The solo manifest of the design's 8.1 (four casks, two volatile, three clamps): what every proof books.
 	static const FCargoLayout Hauler = Build(TEXT("Hauler_Mk1"), 4, 2);
-	return SectionId == Hauler.SectionId ? &Hauler : nullptr;
+	// The floor has air and a cargo model before a ship result fills it (M5-2): the empty manifest.
+	static const FCargoLayout Floor = BuildFloor({}, {});
+	if (SectionId == Hauler.SectionId) { return &Hauler; }
+	return SectionId == Floor.SectionId ? &Floor : nullptr;
 }
