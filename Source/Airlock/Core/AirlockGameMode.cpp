@@ -30,13 +30,13 @@
 #include "Voyage/IncidentDirectorComponent.h"
 #include "HAL/IConsoleManager.h"
 
-/** The one switch behind every Airlock* console helper (M4-1). On in every build but Shipping; a server operator can set it. */
+/** The one switch behind every Airlock* console helper (M4-1). On wherever an editor is compiled in (PIE, -game from the editor binary); off in every packaged build until an operator sets it (-ExecCmds="airlock.DevCheats 1" or [ConsoleVariables]). */
 static TAutoConsoleVariable<int32> CVarAirlockDevCheats(
 	TEXT("airlock.DevCheats"),
-#if UE_BUILD_SHIPPING
-	0,
-#else
+#if WITH_EDITOR
 	1,
+#else
+	0,
 #endif
 	TEXT("1 = the Airlock* console helpers (warp, clock, faults, cargo, fuel, air, save) are accepted from any client; 0 = every one is refused and logged."),
 	ECVF_Default);
@@ -99,12 +99,32 @@ APawn* AAirlockGameMode::SpawnDefaultPawnAtTransform_Implementation(AController*
 	{
 		FTransform Candidate = SpawnTransform;
 		Candidate.SetLocation(SpawnTransform.GetLocation() + Right * (Step * ArrivalSpacing));
-		bool bOccupied = false;
-		for (TActorIterator<APawn> It(World); It && !bOccupied; ++It)
+		// Occupied means another player's pawn stands there; an unpossessed or dying pawn (the arriving player's own
+		// old body during a travel, a spectator, a leftover) does not count.
+		APawn* Occupant = nullptr;
+		for (TActorIterator<APawn> It(World); It && !Occupant; ++It)
 		{
-			bOccupied = FVector::DistSquared2D(It->GetActorLocation(), Candidate.GetLocation()) < FMath::Square(ArrivalSpacing * 0.75f);
+			if (IsValid(*It) && It->GetController() && It->GetController() != NewPlayer
+				&& FVector::DistSquaredXY(It->GetActorLocation(), Candidate.GetLocation()) < FMath::Square(ArrivalSpacing * 0.75f)
+				&& FMath::Abs(It->GetActorLocation().Z - Candidate.GetLocation().Z) < 200.f)
+			{
+				Occupant = *It;
+			}
 		}
-		if (bOccupied) { continue; }
+		if (Occupant)
+		{
+			UE_LOG(LogAirlock, Verbose, TEXT("Arrival spawn for %s: %s (%s) occupies the spot %+.0f cm from the start"), NewPlayer ? *NewPlayer->GetName() : TEXT("?"),
+				*Occupant->GetName(), *GetNameSafe(Occupant->GetController()), Step * ArrivalSpacing);
+			continue;
+		}
+		// A side step into a wall is skipped quietly, using the same test SpawnActor's adjust-or-refuse uses (a map
+		// PlayerStart sits at floor level, so the capsule always needs the lift FindTeleportSpot allows); the start
+		// itself keeps the engine's own behaviour.
+		FVector Probe = Candidate.GetLocation();
+		if (Step != 0.f && !World->FindTeleportSpot(PawnClass->GetDefaultObject<APawn>(), Probe, Candidate.GetRotation().Rotator()))
+		{
+			continue;
+		}
 		FActorSpawnParameters Params;
 		Params.Instigator = GetInstigator();
 		Params.ObjectFlags |= RF_Transient;

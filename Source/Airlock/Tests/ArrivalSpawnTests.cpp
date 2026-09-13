@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Pawn.h"
+#include "Components/BoxComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 namespace
@@ -63,6 +64,30 @@ bool FArrivalRowTest::RunTest(const FString& Parameters)
 	S.Mode->RestartPlayer(Sixth);
 	APawn* SixthPawn = Sixth->GetPawn();
 	TestNotNull(TEXT("Sixth arrival still has a pawn"), SixthPawn);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArrivalBlockedStepTest, "Airlock.Multiplayer.ArrivalSkipsBlockedSideStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArrivalBlockedStepTest::RunTest(const FString& Parameters)
+{
+	FArrivalTestWorld S;
+	FActorSpawnParameters Params; Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	APlayerStart* Start = S.World->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(1000, 2000, 120), FRotator::ZeroRotator, Params);
+	TestNotNull(TEXT("Start"), Start); if (!Start) { return false; }
+	// A wall where the first side step (+120 along +Y) would go: the second arrival takes the other side.
+	AActor* Wall = S.World->SpawnActor<AActor>(AActor::StaticClass(), FVector(1000, 2120, 120), FRotator::ZeroRotator, Params);
+	UBoxComponent* Box = NewObject<UBoxComponent>(Wall, TEXT("Wall"));
+	Box->SetBoxExtent(FVector(60, 60, 150));
+	Box->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	Wall->SetRootComponent(Box); Box->RegisterComponent(); Wall->SetActorLocation(FVector(1000, 2120, 120));
+
+	auto* First = S.World->SpawnActor<AAirlockPlayerController>(Params); S.Mode->RestartPlayer(First);
+	auto* Second = S.World->SpawnActor<AAirlockPlayerController>(Params); S.Mode->RestartPlayer(Second);
+	APawn* FirstPawn = First->GetPawn(); APawn* SecondPawn = Second->GetPawn();
+	TestNotNull(TEXT("First arrival has a pawn"), FirstPawn); TestNotNull(TEXT("Second arrival has a pawn"), SecondPawn);
+	if (!FirstPawn || !SecondPawn) { return false; }
+	TestEqual(TEXT("First at the start"), FirstPawn->GetActorLocation().Y, 2000.0, 1.0);
+	TestEqual(TEXT("Second skips the walled side"), SecondPawn->GetActorLocation().Y, 1880.0, 1.0);
 	return true;
 }
 #endif

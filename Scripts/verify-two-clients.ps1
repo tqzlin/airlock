@@ -15,7 +15,8 @@ New-Item -ItemType Directory -Force -Path $proofDir, $consoleDir | Out-Null
 $script:ProofStart = [DateTime]::UtcNow
 $script:StartedPIE = $false
 $playSettings = @{ refPath = '/Script/UnrealEd.Default__LevelEditorPlaySettings' }
-$playKeys = @('PlayNetMode', 'PlayNumberOfClients', 'RunUnderOneProcess', 'NewWindowWidth', 'NewWindowHeight')
+$playKeys = @('PlayNetMode', 'PlayNumberOfClients', 'RunUnderOneProcess', 'bLaunchSeparateServer', 'NewWindowWidth', 'NewWindowHeight')
+$playDefaults = @{ PlayNetMode = 'PIE_Standalone'; PlayNumberOfClients = 1; RunUnderOneProcess = $true; bLaunchSeparateServer = $false; NewWindowWidth = 1280; NewWindowHeight = 720 }
 $script:SavedPlay = $null
 # PIE start persists the play settings to this ini; a restore through set_properties only changes memory, so the
 # section is snapshotted here and written back in finally (otherwise a relaunched editor comes up in two-client mode).
@@ -56,8 +57,9 @@ function Assert-TwoClientWhere([string]$Who, [string]$Map) {
     if ($line -notmatch 'pawn=AirlockCharacter') { throw "$Who has no pawn on $Map`: $line" }
     return $line
 }
-function Save-TwoClientCapture([string]$Who, [string]$Label, [int]$SettleSeconds = 4) {
+function Save-TwoClientCapture([string]$Who, [string]$Label, [string]$Map, [int]$SettleSeconds = 4) {
     Start-Sleep -Seconds $SettleSeconds
+    $null = Assert-TwoClientWhere $Who $Map
     Send-TwoClientCommand $Who "AirlockCapture $Label"
     $line = Wait-TwoClientProofLine ": Capture $Label " 10 $script:LastCommandAt
     if ($line -notmatch 'saved (\d+)x(\d+)') { throw "Capture $Label failed: $line" }
@@ -115,7 +117,8 @@ try {
     $script:SavedPlay = Get-PlaySettings
     $script:SavedPlayIni = Get-PlayIniSection
     Write-Host "Play settings before: $(($script:SavedPlay.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ' ')"
-    Set-PlaySettings @{ PlayNetMode = 'PIE_ListenServer'; PlayNumberOfClients = 2; RunUnderOneProcess = $true; NewWindowWidth = 960; NewWindowHeight = 540 }
+    # PlayNumberOfClients counts the listen server: 2 gives exactly one client window.
+    Set-PlaySettings @{ PlayNetMode = 'PIE_ListenServer'; PlayNumberOfClients = 2; RunUnderOneProcess = $true; bLaunchSeparateServer = $false; NewWindowWidth = 960; NewWindowHeight = 540 }
 
     # The server plays in the viewport from the hub PlayerStart; client 1 gets its own window and spawns at the same start.
     $script:ProofStart = [DateTime]::UtcNow
@@ -149,6 +152,9 @@ try {
     Start-Sleep -Seconds 2
     Send-TwoClientCommand 'client' 'AirlockCarry C1'
     $carry = Wait-TwoClientProofLine ': Carry C1 by' 10 $script:LastCommandAt
+    # The shared log does not say which player acted: the server's own pawn still standing at its arrival spot does.
+    $serverStill = Assert-TwoClientWhere 'server' 'UEDPIE_0_Hauler_Mk1'
+    if ($serverStill -notmatch 'at X=-6660\.\d+ ') { throw "The server's pawn moved during the client's carry: $serverStill" }
     Send-TwoClientCommand 'server' 'AirlockCargoStatus'
     $null = Wait-TwoClientProofLine ': Cargo C1 Carried' 10 $script:LastCommandAt
     Send-TwoClientCommand 'client' 'AirlockWarp -6430 1400 116'
@@ -156,17 +162,17 @@ try {
     Send-TwoClientCommand 'client' 'AirlockPlace Clamp_1'
     $null = Wait-TwoClientProofLine ': Cargo C1 Secured' 10 $script:LastCommandAt
     Send-TwoClientCommand 'client' 'AirlockLook 90'
-    Save-TwoClientCapture 'client' 'm4-1-client-hold'
+    Save-TwoClientCapture 'client' 'm4-1-client-hold' 'UEDPIE_1_Hauler_Mk1'
     Send-TwoClientCommand 'server' 'AirlockWarp -6430 1700 116'
     Send-TwoClientCommand 'server' 'AirlockLook -90'
-    Save-TwoClientCapture 'server' 'm4-1-server-hold'
+    Save-TwoClientCapture 'server' 'm4-1-server-hold' 'UEDPIE_0_Hauler_Mk1'
 
     # The client takes the bridge seat and sees the control board; then it sets the scrubbers from the console path.
     Send-TwoClientCommand 'client' 'AirlockWarp 1760 240 130'
     Start-Sleep -Seconds 2
     Send-TwoClientCommand 'client' 'AirlockSit Bridge'
     $null = Wait-TwoClientProofLine ': Seat Bridge taken by' 10 $script:LastCommandAt
-    Save-TwoClientCapture 'client' 'm4-1-client-seat' 5
+    Save-TwoClientCapture 'client' 'm4-1-client-seat' 'UEDPIE_1_Hauler_Mk1' 5
     Send-TwoClientCommand 'client' 'AirlockStand'
     $null = Wait-TwoClientProofLine ': Seat Bridge released by' 10 $script:LastCommandAt
     Send-TwoClientCommand 'client' 'AirlockScrub Hazard'
@@ -178,7 +184,7 @@ try {
     Send-TwoClientCommand 'client' 'AirlockWarp 0 0 0'
     $null = Wait-TwoClientProofLine ': Cheat AirlockWarp refused for' 10 $script:LastCommandAt
     $where = Assert-TwoClientWhere 'client' 'UEDPIE_1_Hauler_Mk1'
-    if ($where -notmatch 'pawn=.*? at X=1[5-9]\d\d\.') { throw "Refused warp still moved the client: $where" }
+    if ($where -notmatch 'pawn=.*? at X=1790\.\d+ Y=240\.') { throw "Refused warp still moved the client (expected the seat's exit point): $where" }
     Send-TwoClientCommand 'server' 'airlock.DevCheats 1'
     Start-Sleep -Seconds 1
 
@@ -200,13 +206,20 @@ try {
 }
 finally {
     if ($script:StartedPIE) {
+        # The cheat switch is process-wide and survives PIE: never leave it at 0 for the next proof in this editor.
+        try { Send-TwoClientCommand 'server' 'airlock.DevCheats 1' } catch { Write-Host "Could not restore airlock.DevCheats: $_" }
         try { Get-TwoClientProofLines | Set-Content -LiteralPath (Join-Path $proofDir 'two-clients-log.txt') }
         finally {
             $stop = Mcp-Call $TS_App 'StopPIE' @{}
             if (-not $stop.ok) { throw "StopPIE failed: $($stop.text)" }
         }
     }
-    if ($script:SavedPlay) { Set-PlaySettings $script:SavedPlay }
+    if ($script:SavedPlay) {
+        Set-PlaySettings $script:SavedPlay
+        $after = Get-PlaySettings
+        $mismatch = @($playKeys | Where-Object { "$($after[$_])" -ne "$($script:SavedPlay[$_])" })
+        if ($mismatch.Count -gt 0) { Write-Host "Play settings did not restore ($($mismatch -join ', ')); writing the single-player defaults"; Set-PlaySettings $playDefaults }
+    }
     Restore-PlayIniSection $script:SavedPlayIni
     foreach ($file in $commandFiles.Values) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     foreach ($map in @('/Game/Maps/StationHub', '/Game/Maps/Ships/Hauler_Mk1')) {

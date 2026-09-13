@@ -12,6 +12,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "GameFramework/CheatManager.h"
 #include "Misc/OutputDevice.h"
 #include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeLock.h"
@@ -52,7 +53,8 @@ struct FCheatVariableScope
 	IConsoleVariable* Var; int32 Saved;
 	FCheatVariableScope() { Var = IConsoleManager::Get().FindConsoleVariable(TEXT("airlock.DevCheats")); Saved = Var ? Var->GetInt() : 1; }
 	~FCheatVariableScope() { Set(Saved); }
-	void Set(int32 Value) { if (Var) { Var->Set(Value, ECVF_SetByCode); } }
+	// SetByConsole: the proofs flip the variable from the console, and a lower-priority set would be ignored after that.
+	void Set(int32 Value) { if (Var) { Var->Set(Value, ECVF_SetByConsole); } }
 };
 
 class FCheatLogCapture : public FOutputDevice
@@ -83,8 +85,15 @@ bool FCheatGateVariableTest::RunTest(const FString& Parameters)
 	S.Controller->ServerWarp(FVector(-4000, 1560, 118));
 	TestEqual(TEXT("Warp accepted at 1"), S.Crew->GetActorLocation().X, -4000.0, 1.0);
 
+	TestNotNull(TEXT("A controller spawned at 1 gets the engine's cheat manager"), S.Controller->CheatManager.Get());
+
 	Cheats.Set(0);
 	TestFalse(TEXT("Game mode refuses cheats at 0"), S.Mode->AllowCheats(S.Controller));
+	{
+		FActorSpawnParameters Params; Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		auto* Late = S.World->SpawnActor<AAirlockPlayerController>(Params);
+		TestNull(TEXT("A controller spawned at 0 gets no cheat manager"), Late->CheatManager.Get());
+	}
 	{
 		FCheatLogCapture Log;
 		S.Controller->ServerWarp(FVector(-3000, 1560, 118));
@@ -137,7 +146,7 @@ bool FCheatGateEveryRpcTest::RunTest(const FString& Parameters)
 		PC->ServerScrubFromConsole(TEXT("Hazard")); ++Calls;
 		PC->ServerAirSet(50.f); ++Calls;
 		PC->ServerExpose(100.f); ++Calls;
-		PC->ServerBaseFuel(1, 999); ++Calls;
+		PC->ServerBaseFuel(0, 0); ++Calls; // the read-only mode: a regression here must never touch the real save slot
 		PC->ServerSitByStationId(TEXT("Bridge")); ++Calls;
 		PC->ServerStandUpFromConsole(); ++Calls;
 		TestEqual(TEXT("Twenty-seven helpers"), Calls, 27);

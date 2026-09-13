@@ -6,8 +6,8 @@ the worktree `..\Airlock-claude` with its own editor on port 8001 while Astra ra
 
 ## Behaviour changed
 
-- **Every console helper is gated on the server.** `airlock.DevCheats` (console variable, 1 in every build except
-  Shipping where it is 0) is read by `AAirlockGameMode::AllowCheats`; `AAirlockPlayerController::CheatAllowed(Helper)`
+- **Every console helper is gated on the server.** `airlock.DevCheats` (console variable, 1 wherever an editor is
+  compiled in, 0 in every packaged build until an operator sets it) is read by `AAirlockGameMode::AllowCheats`; `AAirlockPlayerController::CheatAllowed(Helper)`
   is the first statement of all 27 `Server*` RPCs that back the `Airlock*` Exec helpers. With the variable at 0 a
   call does nothing and logs `Cheat AirlockWarp refused for <player>: airlock.DevCheats is 0`; nobody is kicked (no
   `_Validate`, on purpose - a dev switch must not disconnect a tester). `ServerChooseVoyage` stays open: it is the
@@ -17,18 +17,24 @@ the worktree `..\Airlock-claude` with its own editor on port 8001 while Astra ra
 - **The file console has one file per game instance.** PIE instance 0 (the listen server, or the only player) and a
   non-PIE game poll `Saved/AgentConsole/commands.txt` as before; PIE client N polls `commands.client<N>.txt` and
   echoes `AgentConsole client N: <line>`. Every instance logs `<prefix>: watching <path>` when it starts and
-  `<prefix>: ready (map=<world>)` each time it has a player controller in a world it has not announced - a script
-  waits for `client 1: ready (map=UEDPIE_1_Hauler_Mk1)` before driving the client after a travel. The decision uses
-  the PIE instance id, not the net mode: a client's world reads as standalone until it has connected.
+  `<prefix>: ready (map=<world>, pc=<controller>)` each time it finds the local player controller in a world it has
+  not announced - a script waits for `client 1: ready` with `UEDPIE_1_Hauler_Mk1` before driving the client after a
+  travel. During a seamless travel the subsystem neither polls nor announces, so a command is only ever executed in
+  the destination world. The decision uses the PIE instance id, not the net mode: a client's world reads as
+  standalone until it has connected. The subsystem is no longer created for a game instance without a world context
+  (the automation harnesses), so a test run cannot eat a proof's command.
 - **`AirlockCapture <Label>`** (local Exec, not in Shipping): a screenshot of this instance's own game viewport
   through `FSlateApplication::TakeScreenshot` on the viewport widget, UMG included, saved to
   `Saved/AgentCaptures/<Label>.png` (`Capture <Label> saved 640x483: <path>`). The in-viewport server instance gives
   the game area without the editor chrome (2032 x 1273 here); the client window gives its 640 x 483 view.
 - **Crew arriving at one PlayerStart step aside** (found by the proof's first run, see below).
-  `AAirlockGameMode::SpawnDefaultPawnAtTransform` skips a candidate spot with a pawn within 90 cm and tries
-  `ArrivalSpacing` (120 cm) steps along the start's right axis, alternating sides up to two steps
+  `AAirlockGameMode::SpawnDefaultPawnAtTransform` skips a candidate spot where a pawn possessed by another
+  controller stands within 90 cm (and 200 cm of height) and tries `ArrivalSpacing` (120 cm) steps along the start's
+  right axis, alternating sides up to two steps, skipping a side step that is inside a wall
   (`Arrival spawn for AirlockPlayerController_1 stepped +120 cm aside: the start was occupied`); with nothing clear
   it still spawns (`AdjustIfPossibleButAlwaysSpawn`) with a warning. A single player spawns exactly where it did.
+  The first version counted every pawn and stepped a lone player aside at every PIE start; the nine regression
+  proofs caught it at once (`Arrival missed PlayerStart`).
 
 ## Files
 
@@ -37,15 +43,15 @@ the worktree `..\Airlock-claude` with its own editor on port 8001 while Astra ra
 - `Source/Airlock/Core/AirlockPlayerController.h/.cpp` - `CheatAllowed`, the 27 gate lines, `AirlockCapture`.
 - `Source/Airlock/Core/AgentConsoleSubsystem.h/.cpp` - `CommandFilePathFor`, `EchoPrefixFor`, the instance-aware
   poll, the `watching` / `ready` lines.
-- `Source/Airlock/Tests/DevCheatsTests.cpp` (3 tests), `Source/Airlock/Tests/ArrivalSpawnTests.cpp` (1 test).
+- `Source/Airlock/Tests/DevCheatsTests.cpp` (3 tests), `Source/Airlock/Tests/ArrivalSpawnTests.cpp` (2 tests).
 - `Scripts/verify-two-clients.ps1`, `Docs/tasks/M4-1-dev-cheats-and-two-clients.md`, this report.
 - Nothing under `Ship/`, `UI/`, `Station/`, `Voyage/`, `Content/`, no map, no existing test or proof script.
 
 ## Verification
 
-- `Scripts\build-editor.bat` clean. `Scripts\run-tests.bat Airlock`: **94 / 94** (90 + `Airlock.Cheats.GateFollowsConsoleVariable`,
+- `Scripts\build-editor.bat` clean. `Scripts\run-tests.bat Airlock`: **95 / 95** (90 + `Airlock.Cheats.GateFollowsConsoleVariable`,
   `Airlock.Cheats.EveryConsoleRpcIsGated`, `Airlock.Cheats.ConsoleFileFollowsPIEInstance`,
-  `Airlock.Multiplayer.ArrivalsStepAsideAtOneStart`).
+  `Airlock.Multiplayer.ArrivalsStepAsideAtOneStart`, `Airlock.Multiplayer.ArrivalSkipsBlockedSideStep`).
 - `Scripts\verify-two-clients.ps1` on port 8001: see "The two-client run" below.
 - The nine existing proofs on this branch's binary: see the table below.
 
@@ -135,6 +141,24 @@ proof now asserts the `stepped +120 cm aside` line on both the ship and the hub.
 - `m4-1-editor-two-windows.png` - `CaptureEditorImage` at the end (best effort; the client window is a separate
   top-level window and may not be in it).
 - `two-clients-log.txt` - every `LogAirlock` line of the run.
+
+## Red team (second reader, 24 findings, folded before the final proofs)
+
+Folded: the test's variable scope sets with `ECVF_SetByConsole` (a `SetByCode` set is ignored once a proof has
+touched the variable from the console); the proof restores `airlock.DevCheats 1` in `finally` while PIE still runs;
+the default is 1 only where an editor is compiled in (a packaged Development listen server no longer accepts
+`AirlockSaveReset` from a guest); the file console skips polling and the `ready` line during a seamless travel and
+drives the *local* player controller, naming it in the `ready` line; no subsystem for a game instance without a
+world context; the arrival check has a Z tolerance and an `EncroachingBlockingGeometry` pre-check on the side
+steps, with a test for a blocked side; the RPC test calls `ServerBaseFuel` in its read-only mode; a controller
+spawned at 0 is asserted to have no cheat manager; the proof restores `bLaunchSeparateServer` too, re-reads the
+settings after the restore and falls back to the single-player defaults, does an `AirlockWhere` before every
+capture, checks the server's pawn did not move during the client's carry, and pins the seat's exit point; the brief
+records the engine facts the reader verified (RPC callspace in a standalone test world, `AllowCheats` only consulted
+at controller creation, `TakeScreenshot` on the widget not the window, ImageCore public through Engine,
+`PlayNumberOfClients` counting the listen server, PIE client world names). Not folded: a `-ProbePositions` mode for
+the +-120 spots (both maps' arrival spots were seen in the proof), PlayerState names in the server's gameplay log
+lines (an M4 follow-up), joining mid-voyage.
 
 ## Decisions and open questions
 

@@ -13,7 +13,9 @@
 bool UAgentConsoleSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
 #if WITH_EDITOR
-	return Super::ShouldCreateSubsystem(Outer);
+	// A game instance with no world context is an automation harness: it must not poll (and eat) a proof's commands.
+	const UGameInstance* OuterInstance = Cast<UGameInstance>(Outer);
+	return Super::ShouldCreateSubsystem(Outer) && OuterInstance && OuterInstance->GetWorldContext() != nullptr;
 #else
 	return false;
 #endif
@@ -55,11 +57,18 @@ void UAgentConsoleSubsystem::Deinitialize()
 bool UAgentConsoleSubsystem::Poll(float /*DeltaTime*/)
 {
 	UWorld* World = GetWorld();
-	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	// During a seamless travel the controllers sit in the transition world: leave the file alone so a command is
+	// only ever consumed in the destination world (a Server RPC sent mid-travel is dropped silently).
+	const FWorldContext* Context = (World && GEngine) ? GEngine->GetWorldContextFromWorld(World) : nullptr;
+	if (Context && Context->SeamlessTravelHandler.IsInTransition())
+	{
+		return true;
+	}
+	APlayerController* PC = (World && GetGameInstance()) ? GetGameInstance()->GetFirstLocalPlayerController(World) : nullptr;
 	if (World && PC && ReadyWorld.Get() != World)
 	{
 		ReadyWorld = World;
-		UE_LOG(LogAirlock, Log, TEXT("%s: ready (map=%s)"), *Prefix, *World->GetMapName());
+		UE_LOG(LogAirlock, Log, TEXT("%s: ready (map=%s, pc=%s)"), *Prefix, *World->GetMapName(), *PC->GetName());
 	}
 
 	if (!IFileManager::Get().FileExists(*WatchedPath))
