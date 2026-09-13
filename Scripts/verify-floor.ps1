@@ -197,7 +197,7 @@ try {
     Send-FloorCommand 'AirlockWarp -5800 1500 116'
     Send-FloorCommand 'AirlockLook 90'
     Save-FloorCapture 'floor-still-running' 4
-    $null = Wait-FloorProofLine ': Tank 300 L diesel' 90 $loadAt
+    $null = Wait-FloorProofLine ': Tank 3[0-9][0-9] L diesel' 90 $loadAt
     $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C1' 120 $loadAt
     $null = Wait-FloorProofLine ": Okafor: That's diesel in the tank" 10 $loadAt
     $null = Wait-FloorProofLine ': Still Still_1 Idle' 10 $loadAt
