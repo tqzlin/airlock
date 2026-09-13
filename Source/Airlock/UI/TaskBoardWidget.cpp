@@ -12,7 +12,7 @@
 #include "Ship/FuelLayouts.h"
 
 TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air, const FFuelState* Fuel)
+	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air, const FFuelState* Fuel, bool bSummaries)
 {
 	TArray<FTaskBoardRow> Rows;
 	const FFuelRates FuelRates;
@@ -43,7 +43,14 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 		}
 	}
 	Heating.StableSort([](const auto& A, const auto& B) { return A.Temperature > B.Temperature; });
-	for (const auto& Crate : Heating)
+	if (bSummaries && Heating.Num() > 2)
+	{
+		const auto& Hottest = Heating[0];
+		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "TaskCoolSummary", "Cool {0} casks - hottest {1} {2}C"),
+			FText::AsNumber(Heating.Num()), FText::FromName(Hottest.Id),
+			FText::AsNumber(FMath::FloorToInt(Hottest.Temperature))), Hottest.Temperature >= 80.f });
+	}
+	else for (const auto& Crate : Heating)
 	{
 		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "TaskCoolCargo", "Cool crate {0} - {1}C"),
 			FText::FromName(Crate.Id), FText::AsNumber(FMath::FloorToInt(Crate.Temperature))), Crate.Temperature >= 80.f });
@@ -66,7 +73,20 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 		Rows.Add({ FText::Format(Pattern, FText::FromName(Line.Id)), false });
 	}
 	AddModules(EShipModuleStatus::Degraded);
-	for (const auto& Crate : Cargo)
+	int32 LooseCount = 0;
+	if (bSummaries)
+	{
+		for (const auto& Crate : Cargo)
+		{
+			LooseCount += Crate.State == ECargoState::Loose && (!Crate.bVolatile || Crate.Temperature < Warn);
+		}
+	}
+	if (LooseCount > 4)
+	{
+		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "TaskSecureSummary", "Secure {0} loose casks"),
+			FText::AsNumber(LooseCount)), false });
+	}
+	else for (const auto& Crate : Cargo)
 	{
 		if (Crate.State == ECargoState::Loose && (!Crate.bVolatile || Crate.Temperature < Warn))
 		{
@@ -83,6 +103,18 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 	return Rows;
 }
 
+FText UTaskBoardWidget::BuildReadout(const FAtmosphereState* Air, const FFuelState* Fuel, int32 SecondsToDock)
+{
+	TArray<FString> Parts;
+	if (Air) { Parts.Add(FString::Printf(TEXT("AIR %d ppm"), FMath::FloorToInt(Air->Ppm))); }
+	if (Fuel) { Parts.Add(FString::Printf(TEXT("FUEL %d%%"), FMath::FloorToInt(Fuel->Units / FFuelRates().Capacity * 100))); }
+	if (SecondsToDock >= 0)
+	{
+		Parts.Add(FString::Printf(TEXT("%02d:%02d to dock"), SecondsToDock / 60, SecondsToDock % 60));
+	}
+	return FText::FromString(FString::Join(Parts, TEXT("  |  ")));
+}
+
 TSharedRef<SWidget> UTaskBoardWidget::RebuildWidget()
 {
 	if (WidgetTree && !WidgetTree->RootWidget)
@@ -94,10 +126,15 @@ TSharedRef<SWidget> UTaskBoardWidget::RebuildWidget()
 		USizeBox* Width = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Width"));
 		Width->SetWidthOverride(PanelWidth);
 		UVerticalBox* Contents = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Contents"));
-		ClockText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("VoyageClock"));
-		ClockText->SetColorAndOpacity(FSlateColor(FLinearColor(.7f, .9f, 1.f)));
-		FSlateFontInfo Font = ClockText->GetFont(); Font.Size = FontSize + 2; ClockText->SetFont(Font);
-		Contents->AddChildToVerticalBox(ClockText)->SetPadding(FMargin(0, 0, 0, 10));
+		UTextBlock* Header = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Header"));
+		Header->SetText(NSLOCTEXT("Airlock", "TaskHeader", "SHIP TASKS"));
+		Header->SetColorAndOpacity(FSlateColor(FLinearColor(.7f, .9f, 1.f)));
+		FSlateFontInfo Font = Header->GetFont(); Font.Size = FontSize + 2; Header->SetFont(Font);
+		Contents->AddChildToVerticalBox(Header)->SetPadding(FMargin(0, 0, 0, 4));
+		ReadoutText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Readout"));
+		ReadoutText->SetColorAndOpacity(FSlateColor(TextColour));
+		Font.Size = FontSize - 4; ReadoutText->SetFont(Font);
+		Contents->AddChildToVerticalBox(ReadoutText)->SetPadding(FMargin(0, 0, 0, 10));
 		TaskRows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Tasks"));
 		Contents->AddChildToVerticalBox(TaskRows);
 		Width->SetContent(Contents);
@@ -131,25 +168,33 @@ void UTaskBoardWidget::UpdateState(AAirlockGameState* State)
 	}
 	const bool bVisible = State && State->bVoyageActive && !State->CurrentSectionId.IsNone() && State->CurrentSectionId != TEXT("StationHub");
 	SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	if (bVisible && ClockText)
+	if (bVisible && ReadoutText)
 	{
 		const int32 Seconds = FMath::CeilToInt(State->GetVoyageSecondsRemaining());
 		if (Seconds != LastSeconds)
 		{
-			ClockText->SetText(FText::Format(NSLOCTEXT("Airlock", "TaskClock", "SHIP TASKS  |  {0} to dock"),
-				FText::FromString(FString::Printf(TEXT("%02d:%02d"), Seconds / 60, Seconds % 60))));
-			LastSeconds = Seconds;
+			RefreshReadout();
 		}
 	}
 }
 
+void UTaskBoardWidget::RefreshReadout()
+{
+	if (!ReadoutText) { return; }
+	const AAirlockGameState* State = ObservedState.Get();
+	LastSeconds = State && State->bVoyageActive ? FMath::CeilToInt(State->GetVoyageSecondsRemaining()) : INDEX_NONE;
+	ReadoutText->SetText(BuildReadout(State && State->AirHasAtmosphere() ? &State->Atmosphere : nullptr,
+		State && FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr, LastSeconds));
+}
+
 void UTaskBoardWidget::RefreshRows()
 {
+	RefreshReadout();
 	if (!TaskRows || !WidgetTree) { return; }
 	TaskRows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
-	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr, FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr))
+	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr, FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr, true))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(Row.Text);

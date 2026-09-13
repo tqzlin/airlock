@@ -5,6 +5,7 @@
 #include "Ship/CargoLayouts.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "UI/TaskBoardWidget.h"
 #include "Core/AirlockCharacter.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
@@ -190,6 +191,108 @@ bool FCrateLabelRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Burned actor hidden"), Crate->IsHidden());
 	TestFalse(TEXT("Burned id hidden"), Crate->Label->IsVisible());
 	TestFalse(TEXT("Burned state hidden"), Crate->StateLabel->IsVisible());
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLooseCargoSummaryTest, "Airlock.Legibility.LooseSummaryThresholdAndLegacyRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FLooseCargoSummaryTest::RunTest(const FString& Parameters)
+{
+	TArray<FCargoCrateState> Cargo;
+	for (int32 I = 1; I <= 5; ++I)
+	{
+		FCargoCrateState Crate; Crate.Id = *FString::Printf(TEXT("C%d"), I); Cargo.Add(Crate);
+		const auto Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true);
+		const auto Legacy = UTaskBoardWidget::BuildRows({}, {}, Cargo);
+		TestEqual(TEXT("Default still has one row per loose cask"), Legacy.Num(), I);
+		if (I <= 4)
+		{
+			TestEqual(TEXT("Four or fewer keep individual rows"), Rows.Num(), I);
+			for (int32 R = 0; R < I; ++R) { TestEqual(TEXT("Individual words unchanged"), Rows[R].Text.ToString(), Legacy[R].Text.ToString()); }
+		}
+		else
+		{
+			TestEqual(TEXT("Five become one row"), Rows.Num(), 1);
+			TestEqual(TEXT("Loose summary wording"), Rows[0].Text.ToString(), FString(TEXT("Secure 5 loose casks")));
+			TestFalse(TEXT("Loose summary not red"), Rows[0].bFailed);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHeatingCargoSummaryTest, "Airlock.Legibility.HeatingSummaryThresholdOrderAndTerminalExclusions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FHeatingCargoSummaryTest::RunTest(const FString& Parameters)
+{
+	FCargoModel Model; Model.Build(CargoLayouts::Build(TEXT("Hauler_Mk1"), 12, 6));
+	auto Cargo = Model.Crates();
+	Cargo[1].Temperature = 70; Cargo[3].Temperature = 71.9f;
+	auto Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true);
+	TestEqual(TEXT("Two hot casks stay individual"), Rows[0].Text.ToString(), FString(TEXT("Cool crate C4 - 71C")));
+	TestEqual(TEXT("Second hot cask"), Rows[1].Text.ToString(), FString(TEXT("Cool crate C2 - 70C")));
+	TestEqual(TEXT("Ten eligible loose casks"), Rows[2].Text.ToString(), FString(TEXT("Secure 10 loose casks")));
+	Cargo[5].Temperature = 60;
+	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true);
+	TestEqual(TEXT("Three hot casks summarized and floored"), Rows[0].Text.ToString(), FString(TEXT("Cool 3 casks - hottest C4 71C")));
+	TestFalse(TEXT("Below 80 not red"), Rows[0].bFailed);
+	TestEqual(TEXT("No duplicate loose tasks for hot casks"), Rows[1].Text.ToString(), FString(TEXT("Secure 9 loose casks")));
+	const auto Legacy = UTaskBoardWidget::BuildRows({}, {}, Cargo);
+	TestEqual(TEXT("Default retains old overflow"), Legacy.Last().Text.ToString(), FString(TEXT("+4 more")));
+	TestEqual(TEXT("Default hottest"), Legacy[0].Text.ToString(), FString(TEXT("Cool crate C4 - 71C")));
+	TestEqual(TEXT("Default second"), Legacy[1].Text.ToString(), FString(TEXT("Cool crate C2 - 70C")));
+	TestEqual(TEXT("Default third"), Legacy[2].Text.ToString(), FString(TEXT("Cool crate C6 - 60C")));
+	Cargo[3].Temperature = 80;
+	TestTrue(TEXT("Summary red exactly at 80"), UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true)[0].bFailed);
+	Cargo[1].Temperature = 80;
+	TestEqual(TEXT("Tied hottest keeps manifest order"), UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true)[0].Text.ToString(), FString(TEXT("Cool 3 casks - hottest C2 80C")));
+	Cargo[1].State = ECargoState::Carried; Cargo[3].State = ECargoState::Secured;
+	for (const auto State : { ECargoState::Vented, ECargoState::Burned, ECargoState::Racked })
+	{
+		FCargoCrateState Extra; Extra.Id = TEXT("Excluded"); Extra.State = State; Extra.bVolatile = true; Extra.Temperature = 100; Cargo.Add(Extra);
+	}
+	FCargoCrateState Carried; Carried.Id = TEXT("CoolCarried"); Carried.State = ECargoState::Carried; Cargo.Add(Carried);
+	Rows = UTaskBoardWidget::BuildRows({}, {}, Cargo, nullptr, nullptr, true);
+	TestEqual(TEXT("Hot carried and secured still count; terminals and rack do not"), Rows[0].Text.ToString(), FString(TEXT("Cool 3 casks - hottest C2 80C")));
+	TestEqual(TEXT("Excluded states never inflate loose summary"), Rows[1].Text.ToString(), FString(TEXT("Secure 9 loose casks")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSummaryPriorityTest, "Airlock.Legibility.SummariesKeepHazardPriorityAndOverflow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FSummaryPriorityTest::RunTest(const FString& Parameters)
+{
+	FCargoModel Cargo; Cargo.Build(CargoLayouts::Build(TEXT("Hauler_Mk1"), 12, 6));
+	Cargo.SetTemperature(TEXT("C2"), 70); Cargo.SetTemperature(TEXT("C4"), 85); Cargo.SetTemperature(TEXT("C6"), 60);
+	FFuelState Fuel; Fuel.bFeedLeak = true; Fuel.bInjectorsFouled = true;
+	FAtmosphereState Air; Air.Ppm = 22;
+	FShipModuleState Failed; Failed.Id = TEXT("Engines"); Failed.Condition = 10; Failed.Status = EShipModuleStatus::Failed;
+	FShipModuleState Degraded; Degraded.Id = TEXT("PowerCore"); Degraded.Condition = 42; Degraded.Status = EShipModuleStatus::Degraded;
+	FShipLineState Line; Line.Id = TEXT("Coolant_1"); Line.Fault = EShipLineFault::Leak;
+	auto Rows = UTaskBoardWidget::BuildRows({ Failed, Degraded }, { Line }, Cargo.Crates(), &Air, &Fuel, true);
+	const TArray<FString> Expected = { TEXT("Fuel leak - shut the feed valve"), TEXT("Hold air 22 ppm - scrub"),
+		TEXT("Clear the injectors"), TEXT("Cool 3 casks - hottest C4 85C"), TEXT("Engines - Failed 10%"),
+		TEXT("Tape leak - Coolant_1"), TEXT("PowerCore - Degraded 42%"), TEXT("Secure 9 loose casks") };
+	if (!TestEqual(TEXT("Eight distinct tasks"), Rows.Num(), Expected.Num())) { return false; }
+	for (int32 I = 0; I < Expected.Num(); ++I) { TestEqual(TEXT("Priority"), Rows[I].Text.ToString(), Expected[I]); }
+	Rows = UTaskBoardWidget::BuildRows({ Failed, Failed, Failed, Degraded }, { Line }, Cargo.Crates(), &Air, &Fuel, true);
+	TestEqual(TEXT("Summary path still caps at eight plus overflow"), Rows.Num(), 9);
+	TestEqual(TEXT("Overflow counts display rows"), Rows.Last().Text.ToString(), FString(TEXT("+2 more")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTaskReadoutTest, "Airlock.Legibility.ReadoutPartsFlooringAndClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTaskReadoutTest::RunTest(const FString& Parameters)
+{
+	FAtmosphereState Air; Air.Ppm = 22.9f;
+	FFuelState Fuel; Fuel.Units = 80.9f;
+	TestEqual(TEXT("Full field readout"), UTaskBoardWidget::BuildReadout(&Air, &Fuel, 1169).ToString(), FString(TEXT("AIR 22 ppm  |  FUEL 80%  |  19:29 to dock")));
+	TestEqual(TEXT("Air only"), UTaskBoardWidget::BuildReadout(&Air, nullptr, -1).ToString(), FString(TEXT("AIR 22 ppm")));
+	TestEqual(TEXT("Fuel only"), UTaskBoardWidget::BuildReadout(nullptr, &Fuel, -1).ToString(), FString(TEXT("FUEL 80%")));
+	TestEqual(TEXT("Clock only at dock"), UTaskBoardWidget::BuildReadout(nullptr, nullptr, 0).ToString(), FString(TEXT("00:00 to dock")));
+	TestEqual(TEXT("Air and fuel without clock"), UTaskBoardWidget::BuildReadout(&Air, &Fuel, -10).ToString(), FString(TEXT("AIR 22 ppm  |  FUEL 80%")));
+	TestEqual(TEXT("Air and clock"), UTaskBoardWidget::BuildReadout(&Air, nullptr, 9).ToString(), FString(TEXT("AIR 22 ppm  |  00:09 to dock")));
+	TestEqual(TEXT("Fuel and clock"), UTaskBoardWidget::BuildReadout(nullptr, &Fuel, 60).ToString(), FString(TEXT("FUEL 80%  |  01:00 to dock")));
+	TestTrue(TEXT("Nothing gives empty text"), UTaskBoardWidget::BuildReadout(nullptr, nullptr, -1).IsEmpty());
 	return true;
 }
 #endif
