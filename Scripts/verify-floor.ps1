@@ -143,6 +143,9 @@ try {
     Send-FloorCommand 'AirlockWarp -4265 1560 116'
     $null = Wait-FloorProofLine ': Section Hauler_Mk1: voyage underway' 60 $boardAt
     $null = Wait-FloorProofLine ': Incident director started' 45 $boardAt
+    # Consume the skipped ship incidents while clamps are empty. Otherwise today's final jump releases
+    # Clamp_3 after C3 is secured, defeating the brief's three-cask delivery before the floor proof starts.
+    Send-FloorCommand 'AirlockVoyageClock 75'
     Send-FloorCommand 'AirlockWarp -6330 1700 116'
     Start-Sleep -Seconds 2
     Send-FloorCommand 'AirlockCarry C1'
