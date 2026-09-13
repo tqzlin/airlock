@@ -228,9 +228,11 @@ void AAirlockGameMode::BeginPlay()
 		NextSetPiece = 0; bFuelFollowupPending = false; bFuelShortSpoken = false;
 		bStartedVoyageClock = true;
 		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
+		if (bFloor) { HazardModel.Reset(); PublishFloorHazards(); }
 		if (FuelHasSystem()) { FuelModel.Reset(); PublishFuel(); }
 		AirCaptainLastSpoken.Reset();
 		BlackoutCount = 0; CountedBlackouts.Reset();
+		if (bFloor) { PublishFloorCriticals(); }
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -613,6 +615,7 @@ void AAirlockGameMode::TickShipGraph()
 		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
 	}
 	TickRefinery();
+	TickFloorHazards();
 	TickFuel();
 }
 
@@ -931,6 +934,7 @@ void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
 	if (Counted && *Counted == Crew->BlackoutEndServerTime) { return; }
 	CountedBlackouts.Add(Pawn, Crew->BlackoutEndServerTime);
 	++BlackoutCount;
+	if (IsFloorSection()) { PublishFloorCriticals(); }
 	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down. Get them to air."), Pawn);
 }
 
@@ -1125,6 +1129,7 @@ void AAirlockGameMode::BuildRefinery()
 		FRefineryCask Cask; Cask.Id = Crate.Id; Cask.bLight = Crate.bVolatile; Casks.Add(Cask);
 	}
 	RefineryModel.Build(RefineryLayouts::StillCount(*Layout), Casks);
+	HazardModel.Reset(); PublishFloorHazards();
 	bFirstBatchSpoken = false;
 	PublishRefinery();
 	UE_LOG(LogAirlock, Log, TEXT("Refinery: %d stills, %d casks delivered"), RefineryModel.State().Stills.Num(), Casks.Num());
@@ -1216,6 +1221,7 @@ void AAirlockGameMode::ApplyRefineryEvents(const TArray<FRefineryEvent>& Events)
 			break;
 		case ERefineryEvent::Spill:
 			UE_LOG(LogAirlock, Log, TEXT("Refinery Spill %s %s litres=%d"), *Still, *Cask, FMath::FloorToInt(E.Litres));
+			HazardSpill(E.StillId, E.Litres);
 			SpeakFloorLine(TEXT("Spill"), FText::Format(NSLOCTEXT("Airlock", "OkaforSpill", "Flood on {0} - crude over the lip. Feed down, and mind your footing, it's slick."), Name));
 			break;
 		case ERefineryEvent::Pop:
@@ -1344,3 +1350,73 @@ FString AAirlockGameMode::RefinerySummary() const
 }
 
 FString AAirlockGameMode::RefineryStillReadout(FName Still) const { return RefineryModel.StillReadout(Still); }
+
+// --- Crude on the deck (M5-4b) ---
+FName AAirlockGameMode::HazardSpill(FName Still, float Litres)
+{
+	if (!HasAuthority() || !RefineryHasFloor()) { return NAME_None; }
+	const auto* Layout = RefineryLayouts::Find(GetGameState<AAirlockGameState>()->CurrentSectionId);
+	const auto* Spec = Layout->Fixtures.FindByPredicate([Still](const FFloorFixtureSpec& S)
+		{ return S.Kind == EFloorFixtureKind::Still && S.Id == Still; });
+	if (!Spec) { UE_LOG(LogAirlock, Log, TEXT("Spill rejected: no such still")); return NAME_None; }
+	const FName Id = HazardModel.Spill(Still, RefineryLayouts::SpillPoint(*Spec), Litres);
+	if (Id.IsNone()) { return Id; }
+	const auto* Spill = HazardModel.Find(Id);
+	const bool bMerged = GetGameState<AAirlockGameState>()->FloorHazards.Spills.ContainsByPredicate(
+		[Id](const FFloorSpillState& S) { return S.Id == Id; });
+	if (bMerged) { UE_LOG(LogAirlock, Log, TEXT("Spill %s merged: %d L"), *Id.ToString(), FMath::FloorToInt(Spill->Litres)); }
+	else { UE_LOG(LogAirlock, Log, TEXT("Spill %s by %s: %d L (r %d cm)"), *Id.ToString(), *Still.ToString(),
+		FMath::FloorToInt(Spill->Litres), FMath::FloorToInt(Spill->RadiusCm)); }
+	PublishFloorHazards(); return Id;
+}
+bool AAirlockGameMode::HazardSqueegee(FName Id, APawn* By)
+{
+	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(By) || By->GetWorld() != GetWorld() || !HazardModel.Squeegee(Id)) { return false; }
+	UE_LOG(LogAirlock, Log, TEXT("Spill %s cleared by %s"), *Id.ToString(), *By->GetName());
+	PublishFloorHazards(); return true;
+}
+FName AAirlockGameMode::HazardContains(const FVector& Feet) const
+{
+	return RefineryHasFloor() ? HazardModel.Contains(Feet) : NAME_None;
+}
+FString AAirlockGameMode::HazardSummary() const { return HazardModel.Summary(); }
+void AAirlockGameMode::HazardCountStumble(APawn* Pawn)
+{
+	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(Pawn) || Pawn->GetWorld() != GetWorld()) { return; }
+	HazardModel.CountStumble(); PublishFloorHazards();
+	SpeakFloorLine(TEXT("Stumble"), FText::Format(NSLOCTEXT("Airlock", "OkaforStumble",
+		"Cask down - {0} went over in the crude. Get it up before it warms."), FText::FromString(Pawn->GetName())));
+}
+void AAirlockGameMode::TickFloorHazards()
+{
+	if (!HasAuthority() || !RefineryHasFloor()) { return; }
+	float Added = 0.f;
+	const bool bChanged = HazardModel.Tick(.25f, Added);
+	if (Added > 0.f && AirHasAtmosphere() && AtmosphereModel.AddPpm(Added)) { PublishAtmosphere(); }
+	if (bChanged) { PublishFloorHazards(); }
+}
+void AAirlockGameMode::PublishFloorHazards()
+{
+	auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !RefineryHasFloor()) { return; }
+	FFloorHazardState Mirror = HazardModel.State();
+	for (auto& Spill : Mirror.Spills)
+	{
+		Spill.Litres = FMath::FloorToFloat(Spill.Litres);
+		Spill.RadiusCm = FMath::FloorToFloat(Spill.RadiusCm);
+	}
+	GS->PublishFloorHazards(Mirror);
+}
+void AAirlockGameMode::PublishFloorCriticals()
+{
+	auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !IsFloorSection()) { return; }
+	GS->FloorCriticals = BlackoutCount; GS->ForceNetUpdate(); GS->OnRep_FloorHazards();
+	for (TActorIterator<AFloorFixture> It(GetWorld()); It; ++It)
+	{
+		if (It->GetFixtureId() == TEXT("Bunk"))
+		{
+			It->SetLine2(BlackoutCount > 0 ? FString::Printf(TEXT("%d critical"), BlackoutCount) : TEXT("empty"));
+		}
+	}
+}

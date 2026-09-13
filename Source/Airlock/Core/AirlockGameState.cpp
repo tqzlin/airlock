@@ -35,6 +35,8 @@ void AAirlockGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AAirlockGameState, Cargo);
 	DOREPLIFETIME(AAirlockGameState, Fuel);
 	DOREPLIFETIME(AAirlockGameState, Refinery);
+	DOREPLIFETIME(AAirlockGameState, FloorHazards);
+	DOREPLIFETIME(AAirlockGameState, FloorCriticals);
 	DOREPLIFETIME(AAirlockGameState, Atmosphere);
 	DOREPLIFETIME(AAirlockGameState, PuffingCrates);
 	DOREPLIFETIME(AAirlockGameState, LastVoyageResult);
@@ -98,4 +100,10 @@ void AAirlockGameState::PublishRefinery(const FRefineryState& InRefinery)
 	Refinery = InRefinery; ForceNetUpdate(); OnRep_Refinery();
 }
 void AAirlockGameState::OnRep_Refinery() { OnShipGraphChanged.Broadcast(); }
+void AAirlockGameState::PublishFloorHazards(const FFloorHazardState& InHazards)
+{
+	if (!HasAuthority() || FloorHazards == InHazards) { return; }
+	FloorHazards = InHazards; ForceNetUpdate(); OnRep_FloorHazards();
+}
+void AAirlockGameState::OnRep_FloorHazards() { OnShipGraphChanged.Broadcast(); }
 bool AAirlockGameState::RefineryHasFloor() const { return RefineryLayouts::Find(CurrentSectionId) != nullptr; }
