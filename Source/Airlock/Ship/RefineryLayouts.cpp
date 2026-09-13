@@ -3,9 +3,9 @@
 
 namespace
 {
-	const TCHAR* TankMesh = TEXT("/Game/ModSciInteriors/Meshes/SM_WVC_Tank_A.SM_WVC_Tank_A");
-	const TCHAR* PalletMesh = TEXT("/Game/ModSci_EngiProps/Meshes/SM_PlasticPallet.SM_PlasticPallet");
-	const TCHAR* CabinetMesh = TEXT("/Game/StarterBundle/ModularScifiProps/Meshes/SM_Cabinet_A.SM_Cabinet_A");
+	const TCHAR* FloorTankMesh = TEXT("/Game/ModSciInteriors/Meshes/SM_WVC_Tank_A.SM_WVC_Tank_A");
+	const TCHAR* FloorPalletMesh = TEXT("/Game/ModSci_EngiProps/Meshes/SM_PlasticPallet.SM_PlasticPallet");
+	const TCHAR* FloorCabinetMesh = TEXT("/Game/StarterBundle/ModularScifiProps/Meshes/SM_Cabinet_A.SM_Cabinet_A");
 }
 
 FName RefineryLayouts::FloorSectionId()
@@ -36,13 +36,13 @@ const FRefineryLayout* RefineryLayouts::Find(FName SectionId)
 			Layout.Fixtures.Add(Spec);
 		};
 		// Three stills in a row along the north side, three metres apart, labels facing the walkway (-Y).
-		Fixture(TEXT("Still_1"), EFloorFixtureKind::Still, -5800, 1900, -65, 0, 0.8, -90, 250, TankMesh, TEXT("STILL 1"), TEXT("idle"));
-		Fixture(TEXT("Still_2"), EFloorFixtureKind::Still, -5400, 1900, -65, 0, 0.8, -90, 250, TankMesh, TEXT("STILL 2"), TEXT("idle"));
-		Fixture(TEXT("Still_3"), EFloorFixtureKind::Still, -5000, 1900, -65, 0, 0.8, -90, 250, TankMesh, TEXT("STILL 3"), TEXT("idle"));
+		Fixture(TEXT("Still_1"), EFloorFixtureKind::Still, -5800, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 1"), TEXT("idle"));
+		Fixture(TEXT("Still_2"), EFloorFixtureKind::Still, -5400, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 2"), TEXT("idle"));
+		Fixture(TEXT("Still_3"), EFloorFixtureKind::Still, -5000, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 3"), TEXT("idle"));
 		// The product tank at the east end, the drain mid-walkway, the bunk by the airlock.
-		Fixture(TEXT("Tank"), EFloorFixtureKind::Tank, -4650, 1900, 22, 0, 1.0, -90, 300, TankMesh, TEXT("DIESEL"), TEXT("0 L"));
-		Fixture(TEXT("Drain"), EFloorFixtureKind::Drain, -5400, 1560, -70, 0, 0.6, 90, 60, PalletMesh, TEXT("DRAIN"), TEXT(""));
-		Fixture(TEXT("Bunk"), EFloorFixtureKind::Bunk, -6650, 1250, 22, 90, 1.0, 90, 150, CabinetMesh, TEXT("BUNK"), TEXT("empty"));
+		Fixture(TEXT("Tank"), EFloorFixtureKind::Tank, -4650, 1900, 22, 0, 1.0, -90, 300, FloorTankMesh, TEXT("DIESEL"), TEXT("0 L"));
+		Fixture(TEXT("Drain"), EFloorFixtureKind::Drain, -5400, 1560, -70, 0, 0.6, 90, 60, FloorPalletMesh, TEXT("DRAIN"), TEXT(""));
+		Fixture(TEXT("Bunk"), EFloorFixtureKind::Bunk, -6650, 1250, 22, 90, 1.0, 90, 150, FloorCabinetMesh, TEXT("BUNK"), TEXT("empty"));
 		return Layout;
 	}();
 	return SectionId == Floor.SectionId ? &Floor : nullptr;
