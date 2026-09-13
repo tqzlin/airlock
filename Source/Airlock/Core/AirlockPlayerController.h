@@ -164,6 +164,9 @@ public:
 	UFUNCTION(Server, Reliable) void ServerSitByStationId(FName StationId);
 	UFUNCTION(Server, Reliable) void ServerStandUpFromConsole();
 
+	/** M4-1: local capture of this instance's own game viewport (Slate and UMG included) to Saved/AgentCaptures/<Label>.png; not in Shipping. */
+	UFUNCTION(Exec) void AirlockCapture(FString Label);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -183,6 +186,9 @@ protected:
 	TObjectPtr<UControlBoardWidget> ControlBoardWidget;
 
 	FTimerHandle ArrivalFadeTimer;
+
+	/** Server side (M4-1). True while the game mode allows cheats (`airlock.DevCheats`); otherwise logs `Cheat <Helper> refused` and returns false. */
+	bool CheatAllowed(const TCHAR* Helper);
 
 	UFUNCTION()
 	void HandleVoyageChosen(EVoyageType Type);

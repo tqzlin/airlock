@@ -28,6 +28,18 @@
 #include "UI/VoyageBoardWidget.h"
 #include "Voyage/VoyageSubsystem.h"
 #include "Voyage/IncidentDirectorComponent.h"
+#include "HAL/IConsoleManager.h"
+
+/** The one switch behind every Airlock* console helper (M4-1). On in every build but Shipping; a server operator can set it. */
+static TAutoConsoleVariable<int32> CVarAirlockDevCheats(
+	TEXT("airlock.DevCheats"),
+#if UE_BUILD_SHIPPING
+	0,
+#else
+	1,
+#endif
+	TEXT("1 = the Airlock* console helpers (warp, clock, faults, cargo, fuel, air, save) are accepted from any client; 0 = every one is refused and logged."),
+	ECVF_Default);
 
 const FName AAirlockGameMode::HubSectionId(TEXT("StationHub"));
 
@@ -864,4 +876,9 @@ void AAirlockGameMode::FuelLeakConsole()
 		ScheduleNextVoyageEvent();
 	}
 	else { FuelOpenLeak(); UE_LOG(LogAirlock, Log, TEXT("SetPiece FuelLeak (console)")); }
+}
+
+bool AAirlockGameMode::AllowCheats(APlayerController* /*Player*/)
+{
+	return CVarAirlockDevCheats.GetValueOnGameThread() != 0;
 }

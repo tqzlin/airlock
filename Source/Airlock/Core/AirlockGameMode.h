@@ -34,6 +34,9 @@ public:
 	virtual void BeginPlay() override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 
+	/** M4-1: every console helper's Server RPC asks this first. True while `airlock.DevCheats` is non-zero. */
+	virtual bool AllowCheats(APlayerController* Player) override;
+
 	/** Section id of the station hub; a door targeting it always travels (and ends the pending voyage). */
 	static const FName HubSectionId;
 
