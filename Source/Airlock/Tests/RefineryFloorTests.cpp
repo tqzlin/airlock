@@ -222,7 +222,9 @@ bool FFloorStillsTest::RunTest(const FString& Parameters)
 	if (!MirrorStill(Still1)) { AddError(TEXT("Still_1 missing from the mirror")); return false; }
 	AFloorFixture* StillFixture = S.Find<AFloorFixture>(Still1); AFloorFixture* TankFixture = S.Find<AFloorFixture>(TEXT("Tank"));
 	if (!StillFixture || !TankFixture) { AddError(TEXT("Fixtures missing")); return false; }
-	TestTrue(TEXT("Still label idle"), StillFixture->CurrentLabel().Contains(TEXT("idle 92K")));
+	// M5-5: the still's name stands alone on its base label; the state is on the gauge stack (StillTests reads it).
+	TestEqual(TEXT("Still label is its name"), StillFixture->CurrentLabel(), FString(TEXT("STILL 1")));
+	TestTrue(TEXT("Still state line still describes the mirror"), AFloorFixture::StateLine(StillFixture->GetSpec(), S.State->Refinery).Contains(TEXT("idle 92K")));
 	TestTrue(TEXT("Tank label empty"), TankFixture->CurrentLabel().EndsWith(TEXT("0 L")));
 	// Knobs: set, step, clamp, an unknown still; the state mirrors them.
 	TestTrue(TEXT("Heat set"), S.Mode->RefinerySetKnob(Still1, ERefineryKnob::Heat, 8));
@@ -252,7 +254,7 @@ bool FFloorStillsTest::RunTest(const FString& Parameters)
 	S.Tick(1.f);
 	TestEqual(TEXT("Running"), MirrorStill(Still1)->Status, EStillStatus::Running);
 	TestEqual(TEXT("Current cask"), MirrorStill(Still1)->CurrentCask, FName(TEXT("C1")));
-	TestTrue(TEXT("Still label runs"), StillFixture->CurrentLabel().Contains(TEXT("C1 ")));
+	TestTrue(TEXT("Still state line runs"), AFloorFixture::StateLine(StillFixture->GetSpec(), S.State->Refinery).Contains(TEXT("C1 ")));
 	S.Tick(101.f);
 	TestEqual(TEXT("C1 refined"), S.State->Refinery.CasksRefined, 1);
 	TestEqual(TEXT("Idle again"), MirrorStill(Still1)->Status, EStillStatus::Idle);

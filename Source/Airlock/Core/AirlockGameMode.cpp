@@ -917,7 +917,14 @@ void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* P
 	const double* Last = AirCaptainLastSpoken.Find(Cue);
 	if (Last && Now - *Last < 20.0) { return; }
 	AirCaptainLastSpoken.Add(Cue, Now);
-	const FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	if (IsFloorSection())
+	{
+		// Okafor speaks on the floor (M5-5): the ship captain's opener comes off the shared air and fuel patterns.
+		FString Text = Line.ToString();
+		Text.RemoveFromStart(FString::Printf(TEXT("Captain %s here. "), *ActiveVoyage.Captain.ToString()));
+		Line = FText::FromString(Text);
+	}
 	UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *SpeakerName(), *Line.ToString());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -1372,8 +1379,17 @@ FName AAirlockGameMode::HazardSpill(FName Still, float Litres)
 }
 bool AAirlockGameMode::HazardSqueegee(FName Id, APawn* By)
 {
-	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(By) || By->GetWorld() != GetWorld() || !HazardModel.Squeegee(Id)) { return false; }
-	UE_LOG(LogAirlock, Log, TEXT("Spill %s cleared by %s"), *Id.ToString(), *By->GetName());
+	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(By) || By->GetWorld() != GetWorld()) { return false; }
+	const FFloorSpillState* Before = HazardModel.Find(Id);
+	const float LitresBefore = Before ? Before->Litres : 0.f;
+	if (!HazardModel.Squeegee(Id)) { return false; }
+	// One pass takes SqueegeeLitres; a bigger puddle says what is left so the crew knows to go again (M5-5 wording).
+	if (const FFloorSpillState* Left = HazardModel.Find(Id))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Spill %s squeegeed by %s: %d L off, %d L left"), *Id.ToString(), *By->GetName(),
+			FMath::FloorToInt(LitresBefore - Left->Litres), FMath::FloorToInt(Left->Litres));
+	}
+	else { UE_LOG(LogAirlock, Log, TEXT("Spill %s cleared by %s"), *Id.ToString(), *By->GetName()); }
 	PublishFloorHazards(); return true;
 }
 FName AAirlockGameMode::HazardContains(const FVector& Feet) const

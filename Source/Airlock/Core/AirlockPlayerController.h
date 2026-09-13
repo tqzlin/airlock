@@ -91,6 +91,10 @@ public:
 	UFUNCTION(Exec)
 	void AirlockWhere();
 
+	/** M5-5: logs this instance's smoothed frame rate (`Fps: <n> fps, <ms> ms/frame, map=<map>`), for the exposure check before a playtest. */
+	UFUNCTION(Exec)
+	void AirlockFps();
+
 	/** Moves the active voyage clock on the server (clamped to its original duration). */
 	UFUNCTION(Exec)
 	void AirlockVoyageClock(float SecondsRemaining);
@@ -204,6 +208,9 @@ protected:
 	TObjectPtr<UControlBoardWidget> ControlBoardWidget;
 
 	FTimerHandle ArrivalFadeTimer;
+
+	/** The frame time `AirlockFps` reports: an exponential average over about the last two seconds of local ticks. */
+	float SmoothedFrameSeconds = 0.f;
 
 	/** Server side (M4-1). True while the game mode allows cheats (`airlock.DevCheats`); otherwise logs `Cheat <Helper> refused` and returns false. */
 	bool CheatAllowed(const TCHAR* Helper);

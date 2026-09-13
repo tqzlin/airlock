@@ -15,6 +15,7 @@
 #include "UI/HoldProgressWidget.h"
 #include "UI/CarryPromptWidget.h"
 #include "UI/ExposureWidget.h"
+#include "UI/PromptWidget.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoCrate.h"
@@ -227,6 +228,21 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 			if (CarryWidget) { CarryWidget->AddToViewport(4); }
 		}
 		if (CarryWidget) { CarryWidget->UpdateCarry(CarriedCrate); }
+		if (!PromptWidget)
+		{
+			PromptWidget = CreateWidget<UPromptWidget>(Cast<APlayerController>(GetController()), UPromptWidget::StaticClass());
+			if (PromptWidget) { PromptWidget->AddToViewport(3); }
+		}
+		if (PromptWidget)
+		{
+			const FText PromptNow = InteractPromptFor(TraceInteractTarget(), IsValid(CarriedCrate), IsValid(HoldTarget));
+			PromptWidget->UpdatePrompt(PromptNow);
+			if (PromptNow.ToString() != LastPrompt)
+			{
+				LastPrompt = PromptNow.ToString();
+				UE_LOG(LogAirlock, Log, TEXT("Prompt: %s"), LastPrompt.IsEmpty() ? TEXT("none") : *LastPrompt);
+			}
+		}
 		if (!ExposureWidget)
 		{
 			ExposureWidget = CreateWidget<UExposureWidget>(Cast<APlayerController>(GetController()), UExposureWidget::StaticClass());
@@ -257,6 +273,7 @@ void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 	if (ObservedCargoState.IsValid()) { ObservedCargoState->OnShipGraphChanged.Remove(CargoChangedHandle); }
 	if (CarryWidget) { CarryWidget->RemoveFromParent(); CarryWidget = nullptr; }
 	if (HoldWidget) { HoldWidget->RemoveFromParent(); HoldWidget = nullptr; }
+	if (PromptWidget) { PromptWidget->RemoveFromParent(); PromptWidget = nullptr; }
 	if (ExposureWidget) { ExposureWidget->RemoveFromParent(); ExposureWidget = nullptr; }
 	if (HasAuthority()) { ResetHold(); LeaveSeat(false); }
 	Super::EndPlay(Reason);
@@ -329,7 +346,20 @@ FVector AAirlockCharacter::PutDownLocation() const
 	FHitResult Hit;
 	FCollisionQueryParams Params(TEXT("CargoPutDown"), false, this);
 	Params.AddIgnoredActor(CarriedCrate);
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, Start - FVector(0, 0, 300), ECC_Visibility, Params)) { return Hit.ImpactPoint; }
+	// A cask lands on something the crew can see (M5-5): an interactable's invisible marker (a still control's box, a
+	// puddle's box, the seat) blocks the Visibility trace only for E, so the drop looks through it - before this a cask
+	// dropped in a puddle rested on the marker's top 30 cm up, and a drop whose trace started inside a control's
+	// marker (an initial overlap answers with the start point) hung 96 cm over the deck. Hidden shapes of other actors
+	// (a test world's floor box) still count as ground.
+	for (int32 Pass = 0; Pass < 4; ++Pass)
+	{
+		if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, Start - FVector(0, 0, 300), ECC_Visibility, Params)) { break; }
+		const UPrimitiveComponent* Surface = Hit.GetComponent();
+		const AActor* MarkerOwner = Surface ? Surface->GetOwner() : nullptr;
+		const bool bMarker = Surface && Surface->bHiddenInGame && MarkerOwner && MarkerOwner->Implements<UInteractable>();
+		if (!bMarker) { return Hit.ImpactPoint; }
+		Params.AddIgnoredComponent(Surface);
+	}
 	return FVector(Start.X, Start.Y, GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 }
 void AAirlockCharacter::DetachCarriedCrateAt(const FTransform& Transform)
@@ -356,7 +386,9 @@ void AAirlockCharacter::ServerPutDown_Implementation()
 	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
 	if (!bVented && (!GM || !GM->CargoPutDown(Id))) { UE_LOG(LogAirlock, Log, TEXT("PutDown rejected: model refused")); return; }
 	DetachCarriedCrateAt(Drop);
-	UE_LOG(LogAirlock, Log, TEXT("PutDown %s by %s%s"), *Id.ToString(), *GetName(), bVented ? TEXT(" (vented)") : TEXT(""));
+	// The landing point is logged (M5-5) so a proof can check the cask rests on the deck, not on a marker.
+	UE_LOG(LogAirlock, Log, TEXT("PutDown %s by %s%s at %s"), *Id.ToString(), *GetName(), bVented ? TEXT(" (vented)") : TEXT(""),
+		*Drop.GetLocation().ToString());
 }
 void AAirlockCharacter::ServerPlace_Implementation(ACargoSlot* CargoSlot)
 {
@@ -611,4 +643,16 @@ void AAirlockCharacter::ServerLoadStill_Implementation(AStillControl* Hopper)
 	// PublishCargo normally clears the carrier synchronously; retain the feed verb's safety net for late binding.
 	if (CarriedCrate) { DetachCarriedCrateAt(InHand); }
 	UE_LOG(LogAirlock, Log, TEXT("Load %s into %s by %s"), *Cask.ToString(), *Still.ToString(), *GetName());
+}
+
+FText AAirlockCharacter::InteractPromptFor(AActor* Target, bool bCarrying, bool bHolding)
+{
+	if (bHolding || !IsValid(Target) || !Target->Implements<UInteractable>()) { return FText::GetEmpty(); }
+	if (bCarrying)
+	{
+		const auto* Control = Cast<AStillControl>(Target);
+		const bool bTakesACask = Target->IsA<ACargoSlot>() || Target->IsA<AFuelIntake>() || (Control && Control->GetControlKind() == EStillControl::Hopper);
+		if (!bTakesACask) { return FText::GetEmpty(); }
+	}
+	return IInteractable::Execute_GetInteractPrompt(Target);
 }

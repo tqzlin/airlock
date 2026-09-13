@@ -42,6 +42,8 @@ private:
 	void Refresh();
 	bool KnobAction(ERefineryKnob& Knob, int32& Step) const;
 	bool LeverAction(ERefineryLever& Lever) const;
+	/** The lever's own second line (M5-5: `hold E`, `no pop`, `coke 12%`, `cond 100%`, `cal 97%`); amber when it wants pulling. */
+	FString LeverLine(const FStillState& S, FLinearColor& OutColour) const;
 	int32 KnobValue(const FStillState& State) const;
 	bool bVisualsReady = false;
 	TWeakObjectPtr<AAirlockGameState> ObservedState;

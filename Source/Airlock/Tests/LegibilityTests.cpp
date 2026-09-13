@@ -23,6 +23,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Particles/ParticleSystemComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -106,9 +107,24 @@ bool FConfigureLabelTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("World facing"), FMath::IsNearlyEqual(Label->GetComponentRotation().Yaw, -90.0));
     TestEqual(TEXT("Linear colour converted to sRGB"), Label->TextRenderColor, Colour.ToFColor(true));
     TestTrue(TEXT("No collision"), Label->GetCollisionEnabled() == ECollisionEnabled::NoCollision);
+    TestTrue(TEXT("Unlit text material (M5-5)"), Label->TextMaterial && Label->TextMaterial->GetName() == TEXT("UnlitText"));
     Actor->SetActorRotation(FRotator(0, -50, 0));
     ShipVisuals::ConfigureLabel(Label, 22.f, -90.f, Colour, Offset);
     TestTrue(TEXT("Reapply uses new owner yaw"), FMath::IsNearlyEqual(Label->GetRelativeRotation().Yaw, -40.0));
+    // The world-centimetre variant on a scaled owner (M5-5): the text and its offset measure what they say; the offset
+    // still turns with the owner (the actor is at yaw -50 here), like every other label's.
+    Actor->SetActorScale3D(FVector(.8f));
+    ShipVisuals::ConfigureLabelUnscaled(Label, 18.f, -90.f, Colour, FVector(0, -125, 185));
+    TestEqual(TEXT("Unscaled keeps the world size"), Label->WorldSize, 18.f);
+    TestTrue(TEXT("Unscaled offset in world centimetres"), (Label->GetComponentLocation() - Actor->GetActorLocation())
+        .Equals(Actor->GetActorRotation().RotateVector(FVector(0, -125, 185)), .5f));
+    TestTrue(TEXT("Unscaled text renders at one"), Label->GetComponentScale().Equals(FVector::OneVector, .001f));
+    Actor->SetActorScale3D(FVector(.3f, .3f, .15f));
+    ShipVisuals::ConfigureLabelUnscaled(Label, 8.f, -90.f, Colour, FVector(0, -12, 98));
+    TestTrue(TEXT("Per-axis owner scale compensated"), (Label->GetComponentLocation() - Actor->GetActorLocation())
+        .Equals(Actor->GetActorRotation().RotateVector(FVector(0, -12, 98)), .5f));
+    TestTrue(TEXT("Per-axis text scale compensated"), Label->GetComponentScale().Equals(FVector::OneVector, .001f));
+    TestTrue(TEXT("Still facing the world yaw"), FMath::IsNearlyEqual(Label->GetComponentRotation().Yaw, -90.0, .1));
     auto* Ownerless = NewObject<UTextRenderComponent>();
     ShipVisuals::ConfigureLabel(Ownerless, 34.f, 90.f, FLinearColor::White, FVector::ZeroVector);
     TestTrue(TEXT("Ownerless yaw"), FMath::IsNearlyEqual(Ownerless->GetRelativeRotation().Yaw, 90.0));
@@ -185,8 +201,9 @@ bool FCrateLabelRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Placed through server verb"), Crate->GetCargoState()->State == ECargoState::Racked);
 	TestTrue(TEXT("Rack restores both lines"), Crate->Label->IsVisible() && Crate->StateLabel->IsVisible());
 	TestTrue(TEXT("Rack takes rack yaw"), FMath::IsNearlyEqual(Crate->GetActorRotation().Yaw, 90.0));
-	TestTrue(TEXT("Rack keeps id world facing"), FMath::IsNearlyEqual(Crate->Label->GetComponentRotation().Yaw, -90.0));
-	TestTrue(TEXT("Rack keeps state world facing"), FMath::IsNearlyEqual(Crate->StateLabel->GetComponentRotation().Yaw, -90.0));
+	// M5-5: a cask faces the walkway from where it stands - the rack is south of it, so the racked cask turns to face north.
+	TestTrue(TEXT("Rack turns the id to face the walkway"), FMath::IsNearlyEqual(Crate->Label->GetComponentRotation().Yaw, 90.0));
+	TestTrue(TEXT("Rack turns the state to face the walkway"), FMath::IsNearlyEqual(Crate->StateLabel->GetComponentRotation().Yaw, 90.0));
 	// Replicated terminal snapshots exercise visuals without changing any model or gameplay helper.
 	auto Cargo = Env.State->Cargo;
 	auto* State = Cargo.FindByPredicate([](const auto& C) { return C.Id == TEXT("C2"); });

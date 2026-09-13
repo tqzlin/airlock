@@ -33,6 +33,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerState.h"
 #include "ImageUtils.h"
+#include "Misc/App.h"
 #include "Misc/Paths.h"
 #include "Widgets/SViewport.h"
 
@@ -140,6 +141,11 @@ void AAirlockPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 	if (!IsLocalController() || !GetLocalPlayer()) { return; }
+	if (DeltaTime > 0.f)
+	{
+		SmoothedFrameSeconds = SmoothedFrameSeconds <= 0.f ? DeltaTime
+			: FMath::Lerp(SmoothedFrameSeconds, DeltaTime, FMath::Clamp(DeltaTime / 2.f, 0.f, 1.f));
+	}
 	if (!TaskBoardWidget)
 	{
 		TaskBoardWidget = CreateWidget<UTaskBoardWidget>(this, UTaskBoardWidget::StaticClass());
@@ -353,6 +359,13 @@ void AAirlockPlayerController::AirlockWhere()
 		GetWorld() ? *GetWorld()->GetMapName() : TEXT("?"), P ? *P->GetName() : TEXT("none"),
 		P ? *P->GetActorLocation().ToString() : TEXT("-"), P ? *P->GetActorRotation().ToString() : TEXT("-"),
 		*ViewLoc.ToString(), *ViewRot.ToString());
+}
+
+void AAirlockPlayerController::AirlockFps()
+{
+	const float Seconds = SmoothedFrameSeconds > 0.f ? SmoothedFrameSeconds : static_cast<float>(FApp::GetDeltaTime());
+	UE_LOG(LogAirlock, Log, TEXT("Fps: %.1f fps, %.1f ms/frame, map=%s"),
+		Seconds > 0.f ? 1.f / Seconds : 0.f, Seconds * 1000.f, GetWorld() ? *GetWorld()->GetMapName() : TEXT("?"));
 }
 
 bool AAirlockPlayerController::CheatAllowed(const TCHAR* Helper)

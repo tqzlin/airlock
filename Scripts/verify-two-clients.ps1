@@ -147,7 +147,8 @@ try {
     $null = Assert-TwoClientWhere 'server' 'UEDPIE_0_Hauler_Mk1'
     $null = Assert-TwoClientWhere 'client' 'UEDPIE_1_Hauler_Mk1'
 
-    # The client carries and secures a cask; the server's model and both boards agree.
+    # The client carries and racks a cask; the server's model and both boards agree. The rack, not a clamp: the
+    # clock jump to the dock fires the run's cargo shift on the first filled clamp, and a racked cask reaches the floor.
     Send-TwoClientCommand 'client' 'AirlockWarp -6330 1700 116'
     Start-Sleep -Seconds 2
     Send-TwoClientCommand 'client' 'AirlockCarry C1'
@@ -157,10 +158,10 @@ try {
     if ($serverStill -notmatch 'at X=-6660\.\d+ ') { throw "The server's pawn moved during the client's carry: $serverStill" }
     Send-TwoClientCommand 'server' 'AirlockCargoStatus'
     $null = Wait-TwoClientProofLine ': Cargo C1 Carried' 10 $script:LastCommandAt
-    Send-TwoClientCommand 'client' 'AirlockWarp -6430 1400 116'
+    Send-TwoClientCommand 'client' 'AirlockWarp -5230 1300 116'
     Start-Sleep -Seconds 2
-    Send-TwoClientCommand 'client' 'AirlockPlace Clamp_1'
-    $null = Wait-TwoClientProofLine ': Cargo C1 Secured' 10 $script:LastCommandAt
+    Send-TwoClientCommand 'client' 'AirlockPlace ColdRack'
+    $null = Wait-TwoClientProofLine ': Cargo C1 Racked' 10 $script:LastCommandAt
     Send-TwoClientCommand 'client' 'AirlockLook 90'
     Save-TwoClientCapture 'client' 'm4-1-client-hold' 'UEDPIE_1_Hauler_Mk1'
     Send-TwoClientCommand 'server' 'AirlockWarp -6430 1700 116'
@@ -198,6 +199,25 @@ try {
     Start-Sleep -Seconds 3
     $null = Assert-TwoClientWhere 'server' 'UEDPIE_0_RefineryFloor'
     $null = Assert-TwoClientWhere 'client' 'UEDPIE_1_RefineryFloor'
+    # The floor by hand from the client (M5-5): C1 off its pallet into Still 1's hopper, a tap on the heat handle,
+    # the prompt and the gauge on the client's own screen (M5-3b's controls over the network).
+    $floorAt = [DateTime]::UtcNow
+    Send-TwoClientCommand 'client' 'AirlockWarp -6240 1560 116'
+    Start-Sleep -Seconds 2
+    Send-TwoClientCommand 'client' 'AirlockCarry C1'
+    $null = Wait-TwoClientProofLine ': Carry C1 by' 10 $floorAt
+    Send-TwoClientCommand 'client' 'AirlockWarp -6000 1600 116'
+    Send-TwoClientCommand 'client' 'AirlockLook 90 -55'
+    $null = Wait-TwoClientProofLine ': Prompt: Load C1 into Still' 15 $floorAt
+    Send-TwoClientCommand 'client' 'AirlockPress Still_1_Hopper'
+    $null = Wait-TwoClientProofLine ': Load C1 into Still_1 by' 10 $floorAt
+    $null = Wait-TwoClientProofLine ': Refinery Still_1 loaded C1' 10 $floorAt
+    Send-TwoClientCommand 'client' 'AirlockWarp -5880 1600 116'
+    Send-TwoClientCommand 'client' 'AirlockLook 90 -35'
+    $null = Wait-TwoClientProofLine ': Prompt: Heat +' 15 $floorAt
+    Send-TwoClientCommand 'client' 'AirlockPress Still_1_HeatPlus'
+    $null = Wait-TwoClientProofLine ': Refinery Still_1 heat 1/20' 10 $floorAt
+    Save-TwoClientCapture 'client' 'm5-5-client-still' 'UEDPIE_1_RefineryFloor'
     $dockAt = [DateTime]::UtcNow
     Send-TwoClientCommand 'server' 'AirlockVoyageClock 5'
     $result = Wait-TwoClientProofLine ': Voyage result:' 60 $dockAt
@@ -211,7 +231,7 @@ try {
     if ($editor.ok -and $editorImage) { Copy-Item -LiteralPath $editorImage -Destination (Join-Path $proofDir 'm4-1-editor-two-windows.png') -Force; Write-Host "Capture: $proofDir/m4-1-editor-two-windows.png" }
     else { Write-Host "Editor capture skipped: $($editor.text)" }
 
-    Write-Host "TWO CLIENTS OK: server + client 1 on the hub -> the client crosses Dock B, both aboard -> client carries and secures C1 -> client at the seat -> client scrubs -> cheat refused at DevCheats 0 -> dock, both home, the second arrival steps aside"
+    Write-Host "TWO CLIENTS OK: server + client 1 on the hub -> the client crosses Dock B, both aboard -> client carries and racks C1 -> client at the seat -> client scrubs -> cheat refused at DevCheats 0 -> dock -> the client loads C1 into Still 1 and taps its heat handle on the floor -> horn, both home, the second arrival steps aside"
 }
 finally {
     if ($script:StartedPIE) {

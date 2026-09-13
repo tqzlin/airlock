@@ -40,9 +40,9 @@ const FRefineryLayout* RefineryLayouts::Find(FName SectionId)
 		Fixture(TEXT("Still_1"), EFloorFixtureKind::Still, -5800, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 1"), TEXT("idle"));
 		Fixture(TEXT("Still_2"), EFloorFixtureKind::Still, -5400, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 2"), TEXT("idle"));
 		Fixture(TEXT("Still_3"), EFloorFixtureKind::Still, -5000, 1900, -65, 0, 0.8, -90, 250, FloorTankMesh, TEXT("STILL 3"), TEXT("idle"));
-		// The product tank at the east end, the drain mid-walkway, the bunk by the airlock.
+		// The product tank at the east end, the drain mid-walkway (its label faces the pallets, south: M5-5 read it mirrored from the still walkway), the bunk by the airlock.
 		Fixture(TEXT("Tank"), EFloorFixtureKind::Tank, -4650, 1900, 22, 0, 1.0, -90, 300, FloorTankMesh, TEXT("DIESEL"), TEXT("0 L"));
-		Fixture(TEXT("Drain"), EFloorFixtureKind::Drain, -5400, 1560, -70, 0, 0.6, 90, 60, FloorPalletMesh, TEXT("DRAIN"), TEXT(""));
+		Fixture(TEXT("Drain"), EFloorFixtureKind::Drain, -5400, 1560, -70, 0, 0.6, -90, 60, FloorPalletMesh, TEXT("DRAIN"), TEXT(""));
 		Fixture(TEXT("Bunk"), EFloorFixtureKind::Bunk, -6650, 1250, 22, 90, 1.0, 90, 150, FloorCabinetMesh, TEXT("BUNK"), TEXT("empty"));
 		return Layout;
 	}();
