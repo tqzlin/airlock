@@ -36,8 +36,29 @@ struct AIRLOCK_API FRefineryLayout
 UENUM()
 enum class ERefineryLever : uint8 { Reset, Purge, Scrape, Repair, Calibrate };
 
+UENUM()
+enum class EStillControl : uint8 { Hopper, HeatMinus, HeatPlus, FeedMinus, FeedPlus, VentMinus, VentPlus, Reset, Purge, Scrape, Repair, Calibrate };
+
+/** Control offsets and marker dimensions are world centimetres, independent of the tank's scale. */
+USTRUCT()
+struct AIRLOCK_API FStillControlSpec
+{
+	GENERATED_BODY()
+	UPROPERTY() FName Id;
+	UPROPERTY() FName StillId;
+	UPROPERTY() EStillControl Kind = EStillControl::Hopper;
+	UPROPERTY() FVector Offset = FVector::ZeroVector;
+	UPROPERTY() float Yaw = 0.f;
+	UPROPERTY() FSoftObjectPath Mesh;
+	UPROPERTY() FVector Scale = FVector::OneVector;
+	UPROPERTY() FString Label;
+	UPROPERTY() FTransform Transform;
+	UPROPERTY() float LabelYaw = -90.f;
+};
+
 namespace RefineryLayouts
 {
+	AIRLOCK_API TArray<FStillControlSpec> StillControls(const FFloorFixtureSpec& Still);
 	/** The floor's fixture table; null for every other section. Positions are probed like the hold's. */
 	AIRLOCK_API const FRefineryLayout* Find(FName SectionId);
 	/** The one section that is the floor. */

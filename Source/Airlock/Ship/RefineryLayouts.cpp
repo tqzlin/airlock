@@ -122,3 +122,36 @@ const TCHAR* RefineryLayouts::StatusName(EStillStatus Status)
 	default: return TEXT("Unknown");
 	}
 }
+
+TArray<FStillControlSpec> RefineryLayouts::StillControls(const FFloorFixtureSpec& Still)
+{
+	TArray<FStillControlSpec> Controls;
+	if (Still.Kind != EFloorFixtureKind::Still) { return Controls; }
+	const FSoftObjectPath Valve(TEXT("/Game/ModSci_Engineer/Meshes/SM_PipeValve_A.SM_PipeValve_A"));
+	const FSoftObjectPath Panel(TEXT("/Game/ModSciInteriors/Meshes/SM_WVD_Panel_A.SM_WVD_Panel_A"));
+	auto Add = [&](EStillControl Kind, const TCHAR* Suffix, FVector Offset, float Yaw,
+		FSoftObjectPath Mesh, FVector Scale, const TCHAR* Label)
+	{
+		FStillControlSpec S;
+		S.Kind = Kind; S.StillId = Still.Id; S.Id = FName(*(Still.Id.ToString() + TEXT("_") + Suffix));
+		S.Offset = Offset; S.Yaw = Yaw; S.Mesh = Mesh; S.Scale = Scale; S.Label = Label;
+		const float WorldYaw = Still.Transform.Rotator().Yaw + Yaw;
+		S.Transform = FTransform(FRotator(0, WorldYaw, 0),
+			Still.Transform.GetLocation() + Still.Transform.GetRotation().RotateVector(Offset), Scale);
+		S.LabelYaw = WorldYaw - 90.f;
+		Controls.Add(S);
+	};
+	Add(EStillControl::Hopper, TEXT("Hopper"), FVector(-200,-200,0), 0, FSoftObjectPath(FloorPalletMesh), FVector(.6), TEXT("HOPPER"));
+	Add(EStillControl::HeatMinus, TEXT("HeatMinus"), FVector(-120,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("HEAT -"));
+	Add(EStillControl::HeatPlus, TEXT("HeatPlus"), FVector(-80,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("HEAT +"));
+	Add(EStillControl::FeedMinus, TEXT("FeedMinus"), FVector(-20,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("FEED -"));
+	Add(EStillControl::FeedPlus, TEXT("FeedPlus"), FVector(20,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("FEED +"));
+	Add(EStillControl::VentMinus, TEXT("VentMinus"), FVector(80,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("VENT -"));
+	Add(EStillControl::VentPlus, TEXT("VentPlus"), FVector(120,-200,0), 0, Valve, FVector(.3,.3,.15), TEXT("VENT +"));
+	Add(EStillControl::Reset, TEXT("Reset"), FVector(-75,-130,110), 0, Panel, FVector(.35), TEXT("RESET"));
+	Add(EStillControl::Purge, TEXT("Purge"), FVector(-25,-130,110), 0, Panel, FVector(.35), TEXT("PURGE"));
+	Add(EStillControl::Scrape, TEXT("Scrape"), FVector(25,-130,110), 0, Panel, FVector(.35), TEXT("SCRAPE"));
+	Add(EStillControl::Repair, TEXT("Repair"), FVector(75,-130,110), 0, Panel, FVector(.35), TEXT("REPAIR"));
+	Add(EStillControl::Calibrate, TEXT("Calibrate"), FVector(150,-60,110), 90, Panel, FVector(.35), TEXT("TRAP"));
+	return Controls;
+}

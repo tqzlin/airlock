@@ -32,6 +32,7 @@
 #include "Ship/RefineryLayouts.h"
 #include "Ship/FloorFixture.h"
 #include "Ship/Still.h"
+#include "Ship/StillControl.h"
 #include "HAL/IConsoleManager.h"
 
 /** The one switch behind every Airlock* console helper (M4-1). On wherever an editor is compiled in (PIE, -game from the editor binary); off in every packaged build until an operator sets it (-ExecCmds="airlock.DevCheats 1" or [ConsoleVariables]). */
@@ -509,6 +510,25 @@ void AAirlockGameMode::BuildFloorFixtures()
 		}
 	}
 	UE_LOG(LogAirlock, Log, TEXT("Floor fixtures: %d"), Layout->Fixtures.Num());
+	int32 Controls = 0;
+	for (const FFloorFixtureSpec& Still : Layout->Fixtures)
+	{
+		for (const FStillControlSpec& Spec : RefineryLayouts::StillControls(Still))
+		{
+			FActorSpawnParameters Params;
+			Params.Name = Spec.Id; Params.bDeferConstruction = true;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			if (auto* Control = GetWorld()->SpawnActor<AStillControl>(AStillControl::StaticClass(), Spec.Transform, Params))
+			{
+				Control->Initialize(Spec);
+#if WITH_EDITOR
+				Control->SetActorLabel(Spec.Id.ToString(), false); Control->SetFolderPath(TEXT("Floor"));
+#endif
+				Control->FinishSpawning(Spec.Transform); ++Controls;
+			}
+		}
+	}
+	UE_LOG(LogAirlock, Log, TEXT("Still controls: %d"), Controls);
 }
 
 void AAirlockGameMode::BuildShipGraph()
