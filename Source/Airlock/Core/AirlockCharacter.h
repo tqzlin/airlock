@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Ship/ShipAtmosphere.h"
 #include "AirlockCharacter.generated.h"
 
 class UCameraComponent;
 struct FInputActionValue;
 class UHoldProgressWidget;
 class UCarryPromptWidget;
+class UExposureWidget;
 class ACargoCrate;
 class ACargoSlot;
 class AAirlockGameState;
@@ -35,6 +37,16 @@ public:
 	AActor* GetHoldTarget() const { return HoldTarget; }
 	float GetHoldProgress() const { return HoldProgress; }
 	bool IsInHoldRange(const AActor* Target) const;
+	UFUNCTION(Server, Reliable) void ServerSetScrubMode(EScrubMode Mode);
+	bool SetScrubModeServer(EScrubMode Mode, bool bRequireReach);
+	UPROPERTY(ReplicatedUsing=OnRep_Exposure) float Exposure = 0.f;
+	UPROPERTY(ReplicatedUsing=OnRep_BlackedOut) bool bBlackedOut = false;
+	UPROPERTY(Replicated) double BlackoutEndServerTime = 0.0;
+	UFUNCTION() void OnRep_Exposure();
+	UFUNCTION() void OnRep_BlackedOut();
+	void ApplyWalkSpeed();
+	void ApplyLocalMovement();
+	bool SetExposureServer(float Percent);
 	UFUNCTION(Server, Reliable) void ServerPickUp(ACargoCrate* Crate);
 	UFUNCTION(Server, Reliable) void ServerPutDown();
 	UFUNCTION(Server, Reliable) void ServerPlace(ACargoSlot* CargoSlot);
@@ -75,6 +87,11 @@ private:
 	void ResetHold();
 	UPROPERTY(Transient) TObjectPtr<UHoldProgressWidget> HoldWidget;
 	UPROPERTY(Transient) TObjectPtr<UCarryPromptWidget> CarryWidget;
+	UPROPERTY(Transient) TObjectPtr<UExposureWidget> ExposureWidget;
+	FAtmosphereRates ExposureRates;
+	float LastExposureForLog = 0.f;
+	double LastCoughTime = -5.0;
+	void TickCrewExposure(float DeltaSeconds);
 	float BaseWalkSpeed = 0.f;
 	bool bCarrySpeedCached = false;
 	void CacheCarrySpeed();
@@ -89,5 +106,4 @@ private:
 	UFUNCTION() void OnRep_SeatedStation();
 	/** Server: releases the seat (if any) and restores walking; puts the pawn at the seat's exit point when bToExit. */
 	void LeaveSeat(bool bToExit);
-	void ApplySeatedMovement(bool bSeated);
 };

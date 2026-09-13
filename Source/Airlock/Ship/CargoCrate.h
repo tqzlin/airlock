@@ -47,6 +47,10 @@ private:
 	void Refresh();
 	bool bVisualsReady = false;
 	bool bVenting = false;
+	bool bPuffing = false;
+	bool bDimPuffLight = false;
+	void FlickerPuffLight();
+	FTimerHandle PuffLightTimer;
 	TWeakObjectPtr<AAirlockGameState> CargoState;
 	FDelegateHandle CargoChangedHandle;
 	FTimerHandle BindTimer;

@@ -6,6 +6,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/CargoModel.h"
+#include "Ship/ShipAtmosphere.h"
 #include "AirlockGameState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
@@ -70,6 +71,11 @@ public:
 	UPROPERTY(Replicated) bool bHasLastVoyageResult = false;
 	void PublishCargo(const TArray<FCargoCrateState>& InCargo);
 	UFUNCTION() void OnRep_Cargo();
+	UPROPERTY(ReplicatedUsing=OnRep_Atmosphere) FAtmosphereState Atmosphere;
+	UPROPERTY(ReplicatedUsing=OnRep_Atmosphere) TArray<FName> PuffingCrates;
+	void PublishAtmosphere(const FAtmosphereState& Air, const TArray<FName>& Puffing);
+	UFUNCTION() void OnRep_Atmosphere();
+	bool AirHasAtmosphere() const;
 
 	/** Authority-only mirror; unchanged arrays are never rewritten. */
 	void PublishShipGraph(const FShipGraph& Graph);

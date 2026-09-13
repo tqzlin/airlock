@@ -35,9 +35,12 @@ void UVoyageBoardWidget::SetOffers(const TArray<FVoyageSpec>& InOffers)
 
 FText UVoyageBoardWidget::DescribeResult(const FVoyageResult& Result)
 {
-	return FText::Format(NSLOCTEXT("Airlock", "LastVoyageResult", "Last run: {0}/{1} crates intact - hull {2}% - pay {3} cr"),
+	const FText Base = FText::Format(NSLOCTEXT("Airlock", "LastVoyageResult", "Last run: {0}/{1} crates intact - hull {2}% - pay {3} cr"),
 		FText::AsNumber(Result.CratesIntact), FText::AsNumber(Result.CratesTotal),
 		FText::AsNumber(FMath::RoundToInt(Result.ShipCondition)), FText::AsNumber(Result.Pay));
+	if (Result.DockPpm < 0) { return Base; }
+	return Result.bCleanAir ? FText::Format(NSLOCTEXT("Airlock", "LastRunCleanAir", "{0} - air clean"), Base)
+		: FText::Format(NSLOCTEXT("Airlock", "LastRunDirtyAir", "{0} - air {1} ppm"), Base, FText::AsNumber(FMath::FloorToInt(Result.DockPpm)));
 }
 void UVoyageBoardWidget::SetLastVoyageResult(const FVoyageResult& Result, bool bHasResult)
 {

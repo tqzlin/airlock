@@ -14,10 +14,13 @@
 #include "Ship/ControlStation.h"
 #include "UI/HoldProgressWidget.h"
 #include "UI/CarryPromptWidget.h"
+#include "UI/ExposureWidget.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
 #include "Ship/CargoCrate.h"
 #include "Ship/CargoSlot.h"
+#include "Ship/ShipModule.h"
+#include "EngineUtils.h"
 
 AAirlockCharacter::AAirlockCharacter()
 {
@@ -66,7 +69,7 @@ void AAirlockCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 void AAirlockCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D Axis = Value.Get<FVector2D>();
-	if (Controller == nullptr || SeatedStation != nullptr)
+	if (Controller == nullptr || SeatedStation != nullptr || bBlackedOut)
 	{
 		return; // seated: the seat holds you; E stands up
 	}
@@ -91,6 +94,7 @@ void AAirlockCharacter::Look(const FInputActionValue& Value)
 
 void AAirlockCharacter::Interact(const FInputActionValue& Value)
 {
+	if (bBlackedOut) { return; }
 	if (SeatedStation != nullptr)
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Interact: standing up from %s"), *SeatedStation->GetActorNameOrLabel());
@@ -120,6 +124,7 @@ bool AAirlockCharacter::IsInHoldRange(const AActor* Target) const
 }
 void AAirlockCharacter::ServerBeginHold_Implementation(AActor* Target)
 {
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Hold rejected: blacked out")); return; }
 	ResetHold();
 	if (CarriedCrate) { UE_LOG(LogAirlock, Log, TEXT("Hold rejected: hands full")); return; }
 	if (!IsValid(Target) || Target->GetWorld() != GetWorld() || !Target->Implements<UInteractable>())
@@ -155,6 +160,7 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (HasAuthority()) { BindCarriedCargo(); CheckCarriedCargo(); }
+	if (HasAuthority()) { TickCrewExposure(DeltaSeconds); }
 	if (HasAuthority() && (HoldTarget || HoldElapsed > 0.f))
 	{
 		const float Seconds = IsValid(HoldTarget) && HoldTarget->Implements<UInteractable>()
@@ -197,6 +203,16 @@ void AAirlockCharacter::Tick(float DeltaSeconds)
 			if (CarryWidget) { CarryWidget->AddToViewport(4); }
 		}
 		if (CarryWidget) { CarryWidget->UpdateCarry(CarriedCrate); }
+		if (!ExposureWidget)
+		{
+			ExposureWidget = CreateWidget<UExposureWidget>(Cast<APlayerController>(GetController()), UExposureWidget::StaticClass());
+			if (ExposureWidget) { ExposureWidget->AddToViewport(5); }
+		}
+		if (ExposureWidget)
+		{
+			const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+			ExposureWidget->UpdateExposure(Exposure, bBlackedOut, BlackoutEndServerTime, GS ? GS->GetServerWorldTimeSeconds() : 0.0);
+		}
 	}
 }
 void AAirlockCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -206,6 +222,9 @@ void AAirlockCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(AAirlockCharacter, HoldProgress, COND_OwnerOnly);
 	DOREPLIFETIME(AAirlockCharacter, CarriedCrate);
 	DOREPLIFETIME(AAirlockCharacter, SeatedStation);
+	DOREPLIFETIME(AAirlockCharacter, bBlackedOut);
+	DOREPLIFETIME_CONDITION(AAirlockCharacter, Exposure, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(AAirlockCharacter, BlackoutEndServerTime, COND_OwnerOnly);
 }
 void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -213,6 +232,7 @@ void AAirlockCharacter::EndPlay(const EEndPlayReason::Type Reason)
 	if (ObservedCargoState.IsValid()) { ObservedCargoState->OnShipGraphChanged.Remove(CargoChangedHandle); }
 	if (CarryWidget) { CarryWidget->RemoveFromParent(); CarryWidget = nullptr; }
 	if (HoldWidget) { HoldWidget->RemoveFromParent(); HoldWidget = nullptr; }
+	if (ExposureWidget) { ExposureWidget->RemoveFromParent(); ExposureWidget = nullptr; }
 	if (HasAuthority()) { ResetHold(); LeaveSeat(false); }
 	Super::EndPlay(Reason);
 }
@@ -235,8 +255,13 @@ void AAirlockCharacter::CacheCarrySpeed()
 }
 void AAirlockCharacter::OnRep_CarriedCrate()
 {
+	ApplyWalkSpeed();
+}
+void AAirlockCharacter::ApplyWalkSpeed()
+{
 	CacheCarrySpeed();
-	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed * (IsValid(CarriedCrate) ? CarrySpeedFactor : 1.f);
+	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed * (IsValid(CarriedCrate) ? CarrySpeedFactor : 1.f)
+		* (Exposure >= ExposureRates.SlowAtExposure ? ExposureRates.SlowFactor : 1.f);
 }
 AActor* AAirlockCharacter::TraceInteractTarget() const
 {
@@ -250,6 +275,7 @@ AActor* AAirlockCharacter::TraceInteractTarget() const
 }
 void AAirlockCharacter::ServerPickUp_Implementation(ACargoCrate* Crate)
 {
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: blacked out")); return; }
 	if (!HasAuthority()) { return; }
 	if (CarriedCrate) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: hands full")); return; }
 	if (SeatedStation) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: seated")); return; }
@@ -305,6 +331,7 @@ void AAirlockCharacter::ServerPutDown_Implementation()
 }
 void AAirlockCharacter::ServerPlace_Implementation(ACargoSlot* CargoSlot)
 {
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Place rejected: blacked out")); return; }
 	if (!HasAuthority()) { return; }
 	if (!IsValid(CarriedCrate)) { UE_LOG(LogAirlock, Log, TEXT("Place rejected: hands empty")); return; }
 	if (!IsValid(CargoSlot) || CargoSlot->GetWorld() != GetWorld()) { UE_LOG(LogAirlock, Log, TEXT("Place rejected: missing slot")); return; }
@@ -339,6 +366,7 @@ void AAirlockCharacter::CheckCarriedCargo()
 // --- Control-room seat ---
 void AAirlockCharacter::ServerSitAt_Implementation(AControlStation* Station)
 {
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Seat rejected: blacked out")); return; }
 	if (!IsValid(Station) || Station->GetWorld() != GetWorld())
 	{
 		UE_LOG(LogAirlock, Log, TEXT("Seat rejected: no such station in this world"));
@@ -364,7 +392,7 @@ void AAirlockCharacter::ServerSitAt_Implementation(AControlStation* Station)
 	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	TeleportTo(Station->GetSeatLocation() + FVector(0, 0, HalfHeight), Station->GetSeatRotation(), false, true);
 	if (Controller) { Controller->SetControlRotation(Station->GetSeatRotation()); }
-	ApplySeatedMovement(true);
+	ApplyLocalMovement();
 	ForceNetUpdate();
 	UE_LOG(LogAirlock, Log, TEXT("Seat %s taken by %s"), *Station->GetStationId().ToString(), *GetName());
 }
@@ -384,19 +412,96 @@ void AAirlockCharacter::LeaveSeat(bool bToExit)
 		}
 		UE_LOG(LogAirlock, Log, TEXT("Seat %s released by %s"), *Station->GetStationId().ToString(), *GetName());
 	}
-	ApplySeatedMovement(false);
+	ApplyLocalMovement();
 	ForceNetUpdate();
 }
-void AAirlockCharacter::ApplySeatedMovement(bool bSeated)
+void AAirlockCharacter::ApplyLocalMovement()
 {
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->StopMovementImmediately();
-		Movement->SetMovementMode(bSeated ? MOVE_None : MOVE_Walking);
+		Movement->SetMovementMode(SeatedStation || bBlackedOut ? MOVE_None : MOVE_Walking);
 	}
 }
 void AAirlockCharacter::OnRep_SeatedStation()
 {
 	// Owning client mirrors the server's movement mode so prediction does not fight the seat.
-	if (!HasAuthority()) { ApplySeatedMovement(SeatedStation != nullptr); }
+	if (IsLocallyControlled()) { ApplyLocalMovement(); }
+}
+
+void AAirlockCharacter::ServerSetScrubMode_Implementation(EScrubMode Mode) { SetScrubModeServer(Mode, true); }
+bool AAirlockCharacter::SetScrubModeServer(EScrubMode Mode, bool bRequireReach)
+{
+	if (!HasAuthority()) { return false; }
+	if (bBlackedOut) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: blacked out")); return false; }
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	if (!GM || !GM->AirHasAtmosphere()) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: No atmosphere on this section")); return false; }
+	if (GS && GS->Atmosphere.bScrubDisabled) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: life support failed")); return false; }
+	if (bRequireReach)
+	{
+		bool bInReach = false;
+		for (TActorIterator<AShipModule> It(GetWorld()); It; ++It)
+		{
+			if (It->GetModuleType() == EShipModuleType::LifeSupport && IsInHoldRange(*It)) { bInReach = true; break; }
+		}
+		if (!bInReach) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: out of range")); return false; }
+	}
+	if (!GM->AirSetScrubMode(Mode)) { UE_LOG(LogAirlock, Log, TEXT("Scrub rejected: invalid mode")); return false; }
+	UE_LOG(LogAirlock, Log, TEXT("Scrub %s by %s"), FShipAtmosphere::ModeName(Mode), *GetName());
+	return true;
+}
+
+void AAirlockCharacter::OnRep_Exposure() { ApplyWalkSpeed(); }
+void AAirlockCharacter::OnRep_BlackedOut() { if (IsLocallyControlled()) { ApplyLocalMovement(); } }
+bool AAirlockCharacter::SetExposureServer(float Percent)
+{
+	if (!HasAuthority() || !FMath::IsFinite(Percent) || Percent < 0 || Percent > 100) { return false; }
+	Exposure = Percent;
+	ApplyWalkSpeed(); ForceNetUpdate();
+	return true;
+}
+void AAirlockCharacter::TickCrewExposure(float DeltaSeconds)
+{
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
+	if (!GM || !GM->AirHasAtmosphere() || !GS || !GS->bVoyageActive || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0) { return; }
+	const double Now = GS->GetServerWorldTimeSeconds();
+	if (bBlackedOut)
+	{
+		if (Now >= BlackoutEndServerTime)
+		{
+			Exposure = ExposureRates.ExposureAfterBlackout;
+			LastExposureForLog = Exposure;
+			bBlackedOut = false; BlackoutEndServerTime = 0;
+			ApplyWalkSpeed(); ApplyLocalMovement(); ForceNetUpdate();
+			UE_LOG(LogAirlock, Log, TEXT("Recovered %s"), *GetName());
+		}
+		return;
+	}
+	// An injected 100 must black out on this tick even when clean air would otherwise recover it.
+	if (Exposure < 100.f) { Exposure = FShipAtmosphere::TickExposure(Exposure, GS->Atmosphere.Ppm, DeltaSeconds, ExposureRates); }
+	ApplyWalkSpeed();
+	for (const float Threshold : { 30.f, 60.f, 100.f })
+	{
+		if (FMath::FloorToInt(LastExposureForLog) < Threshold && FMath::FloorToInt(Exposure) >= Threshold)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Exposure %s %d%%"), *GetName(), FMath::FloorToInt(Exposure));
+		}
+	}
+	LastExposureForLog = Exposure;
+	if (Exposure >= ExposureRates.SlowAtExposure && Now - LastCoughTime >= 5.0)
+	{
+		LastCoughTime = Now;
+		UE_LOG(LogAirlock, Log, TEXT("Cough %s"), *GetName());
+	}
+	if (Exposure >= 100.f)
+	{
+		bBlackedOut = true;
+		BlackoutEndServerTime = Now + ExposureRates.BlackoutSeconds;
+		if (CarriedCrate) { ServerPutDown(); }
+		LeaveSeat(false); ResetHold(); ApplyLocalMovement(); ForceNetUpdate();
+		UE_LOG(LogAirlock, Log, TEXT("Blackout %s"), *GetName());
+		GM->NotifyBlackout(this);
+	}
 }

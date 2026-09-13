@@ -5,6 +5,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Core/AirlockGameState.h"
+#include "Core/AirlockCharacter.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -88,6 +89,32 @@ void AShipModule::Refresh()
 	if (!GraphState.IsValid() || !bVisualsReady) { return; }
 	const FShipModuleState* State = GraphState->ShipModules.FindByPredicate([this](const FShipModuleState& M) { return M.Id == Spec.Id; });
 	if (!State) { return; }
-	Label->SetText(FText::FromString(FString::Printf(TEXT("%s  %s  %.0f%%"), *Spec.Id.ToString(), FShipGraph::StatusName(State->Status), State->Condition)));
+	FString Text = FString::Printf(TEXT("%s  %s  %.0f%%"), *Spec.Id.ToString(), FShipGraph::StatusName(State->Status), State->Condition);
+	if (Spec.Type == EShipModuleType::LifeSupport && GraphState->AirHasAtmosphere())
+	{
+		Text += FString::Printf(TEXT("\nScrubbers %s"), FShipAtmosphere::ModeName(GraphState->Atmosphere.ScrubMode));
+	}
+	Label->SetText(FText::FromString(Text));
 	StatusLight->SetLightColor(State->Status == EShipModuleStatus::Nominal ? NominalColour : State->Status == EShipModuleStatus::Degraded ? DegradedColour : FailedColour);
+}
+
+FText AShipModule::GetInteractPrompt_Implementation() const
+{
+	const auto* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr;
+	if (Spec.Type != EShipModuleType::LifeSupport || !GS || !GS->AirHasAtmosphere() || GS->Atmosphere.bScrubDisabled) { return FText::GetEmpty(); }
+	switch (GS->Atmosphere.ScrubMode)
+	{
+	case EScrubMode::Normal: return NSLOCTEXT("Airlock", "ScrubNormal", "Scrubbers: Normal - E for hazard mode");
+	case EScrubMode::Hazard: return NSLOCTEXT("Airlock", "ScrubHazard", "Scrubbers: Hazard - E for normal mode");
+	default: return NSLOCTEXT("Airlock", "ScrubOff", "Scrubbers: Off - E to start");
+	}
+}
+void AShipModule::Interact_Implementation(APawn* Pawn)
+{
+	if (GetInteractPrompt_Implementation().IsEmpty()) { return; }
+	const auto* GS = GetWorld()->GetGameState<AAirlockGameState>();
+	if (auto* Character = Cast<AAirlockCharacter>(Pawn))
+	{
+		Character->ServerSetScrubMode(GS->Atmosphere.ScrubMode == EScrubMode::Normal ? EScrubMode::Hazard : EScrubMode::Normal);
+	}
 }

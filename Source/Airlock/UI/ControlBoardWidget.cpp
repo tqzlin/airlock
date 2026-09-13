@@ -74,6 +74,9 @@ TSharedRef<SWidget> UControlBoardWidget::RebuildWidget()
 		ClockText->SetColorAndOpacity(FSlateColor(TextColour));
 		FSlateFontInfo ClockFont = ClockText->GetFont(); ClockFont.Size = FontSize; ClockText->SetFont(ClockFont);
 		Contents->AddChildToVerticalBox(ClockText)->SetPadding(FMargin(0, 0, 0, 12));
+		AirText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Air"));
+		AirText->SetColorAndOpacity(FSlateColor(HeaderColour)); AirText->SetFont(ClockFont);
+		Contents->AddChildToVerticalBox(AirText)->SetPadding(FMargin(0, 0, 0, 8));
 		Rows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Rows"));
 		Contents->AddChildToVerticalBox(Rows);
 		UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Footer"));
@@ -145,6 +148,12 @@ void UControlBoardWidget::RefreshRows()
 	Rows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
+	if (AirText)
+	{
+		AirText->SetVisibility(State->AirHasAtmosphere() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		AirText->SetText(FText::FromString(FString::Printf(TEXT("AIR %d ppm  SCRUBBERS %s%s"), FMath::FloorToInt(State->Atmosphere.Ppm),
+			FShipAtmosphere::ModeName(State->Atmosphere.ScrubMode), State->Atmosphere.bBrownout ? TEXT(" BROWNOUT") : TEXT(""))));
+	}
 	for (const FControlBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());

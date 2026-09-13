@@ -132,6 +132,14 @@ public:
 	UFUNCTION(Server, Reliable) void ServerPlaceById(FName SlotId);
 	UFUNCTION(Server, Reliable) void ServerCrateHeat(FName CrateId, float Temperature);
 	UFUNCTION(Server, Reliable) void ServerCargoTally();
+	UFUNCTION(Exec) void AirlockAir();
+	UFUNCTION(Exec) void AirlockScrub(FString Mode);
+	UFUNCTION(Exec) void AirlockAirSet(float Ppm);
+	UFUNCTION(Exec) void AirlockExpose(float Percent);
+	UFUNCTION(Server, Reliable) void ServerAirStatus();
+	UFUNCTION(Server, Reliable) void ServerScrubFromConsole(const FString& Mode);
+	UFUNCTION(Server, Reliable) void ServerAirSet(float Ppm);
+	UFUNCTION(Server, Reliable) void ServerExpose(float Percent);
 
 	/** Control-room seat by station id (same server path as the key; must be within reach) / stand up. */
 	UFUNCTION(Exec) void AirlockSit(FName StationId);

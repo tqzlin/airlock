@@ -103,8 +103,15 @@ void ACargoCrate::Refresh()
 	const FCargoRates Rates;
 	const float Heat = FMath::Clamp((State->Temperature - Rates.WarnTemperature) / (Rates.VentTemperature - Rates.WarnTemperature), 0.f, 1.f);
 	HeatLight->SetVisibility(State->bVolatile && State->Temperature >= Rates.WarnTemperature);
-	HeatLight->SetIntensity(HeatIntensity * Heat);
-	const bool bShouldVent = State->State == ECargoState::Vented;
+	const bool bShouldPuff = State->State != ECargoState::Vented && CargoState.IsValid() && CargoState->PuffingCrates.Contains(Spec.Id);
+	if (bShouldPuff != bPuffing)
+	{
+		bPuffing = bShouldPuff; bDimPuffLight = false;
+		GetWorldTimerManager().ClearTimer(PuffLightTimer);
+		if (bPuffing) { GetWorldTimerManager().SetTimer(PuffLightTimer, this, &ACargoCrate::FlickerPuffLight, .4f, true); }
+	}
+	HeatLight->SetIntensity(HeatIntensity * Heat * (bPuffing && bDimPuffLight ? .6f : 1.f));
+	const bool bShouldVent = State->State == ECargoState::Vented || bPuffing;
 	if (bShouldVent != bVenting)
 	{
 		bVenting = bShouldVent;
@@ -120,6 +127,11 @@ void ACargoCrate::OnVentFinished(UParticleSystemComponent* FinishedSystem)
 void ACargoCrate::RestartVent()
 {
 	if (bVenting) { VentFX->Activate(true); }
+}
+void ACargoCrate::FlickerPuffLight()
+{
+	bDimPuffLight = !bDimPuffLight;
+	Refresh();
 }
 FText ACargoCrate::GetInteractPrompt_Implementation() const
 {

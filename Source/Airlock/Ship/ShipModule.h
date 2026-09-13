@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Ship/ShipLayouts.h"
+#include "Core/Interactable.h"
 #include "ShipModule.generated.h"
 
 class UStaticMeshComponent;
@@ -12,12 +13,16 @@ class USceneComponent;
 class AAirlockGameState;
 
 UCLASS()
-class AIRLOCK_API AShipModule : public AActor
+class AIRLOCK_API AShipModule : public AActor, public IInteractable
 {
 	GENERATED_BODY()
 public:
 	AShipModule();
 	void Initialize(const FShipModuleSpec& InSpec);
+	FName GetModuleId() const { return Spec.Id; }
+	EShipModuleType GetModuleType() const { return Spec.Type; }
+	virtual void Interact_Implementation(APawn* Pawn) override;
+	virtual FText GetInteractPrompt_Implementation() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> ShipRoot;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;

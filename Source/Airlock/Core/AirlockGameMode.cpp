@@ -128,6 +128,9 @@ void AAirlockGameMode::BeginPlay()
 	{
 		CaptainSchedule = FVoyageSchedule::Build(ActiveVoyage);
 		bStartedVoyageClock = true;
+		if (AirHasAtmosphere()) { AtmosphereModel.Reset(); PublishAtmosphere(); }
+		AirCaptainLastSpoken.Reset();
+		BlackoutCount = 0; CountedBlackouts.Reset();
 		GS->bVoyageActive = true;
 		GS->VoyageEndServerTime = GS->GetServerWorldTimeSeconds() + ActiveVoyage.DurationSeconds;
 		GS->ForceNetUpdate();
@@ -398,7 +401,13 @@ void AAirlockGameMode::TickShipGraph()
 	if (!HasAuthority() || !GS || !GS->bVoyageActive) { return; }
 	ShipGraph.Tick(0.25f);
 	PublishShipGraph();
+	const bool bAirFlagsChanged = UpdateAtmosphereFlags();
 	if (CargoModel.Tick(0.25f, ActiveVoyage.DurationSeconds - GS->GetVoyageSecondsRemaining())) { PublishCargo(); }
+	if (AirHasAtmosphere())
+	{
+		const bool bAirChanged = AtmosphereModel.Tick(0.25f, CargoModel.Crates());
+		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
+	}
 }
 
 void AAirlockGameMode::PublishShipGraph()
@@ -422,6 +431,7 @@ void AAirlockGameMode::PublishShipGraph()
 		}
 	}
 	GS->PublishShipGraph(ShipGraph);
+	if (UpdateAtmosphereFlags()) { PublishAtmosphere(); }
 }
 
 bool AAirlockGameMode::ShipSetLineFault(FName Id, EShipLineFault Fault)
@@ -451,6 +461,8 @@ void AAirlockGameMode::BuildCargo()
 	const FCargoLayout* Layout = GS ? CargoLayouts::Find(GS->CurrentSectionId) : nullptr;
 	if (!HasAuthority() || !Layout) { return; }
 	CargoModel.Build(*Layout);
+	AtmosphereModel.Reset();
+	PublishAtmosphere();
 	PublishCargo();
 	for (const auto& Spec : Layout->Slots)
 	{
@@ -541,7 +553,10 @@ FName AAirlockGameMode::CargoFirstFilledClamp() const
 	}
 	return NAME_None;
 }
-FVoyageResult AAirlockGameMode::CargoTally() const { return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage); }
+FVoyageResult AAirlockGameMode::CargoTally() const
+{
+	return FCargoModel::Tally(CargoModel, ShipGraph, ActiveVoyage, AirHasAtmosphere() ? &AtmosphereModel.State() : nullptr, BlackoutCount);
+}
 FString AAirlockGameMode::CargoSummary() const { return CargoModel.Summary(); }
 
 void AAirlockGameMode::RecordVoyageResult()
@@ -554,4 +569,101 @@ void AAirlockGameMode::RecordVoyageResult()
 		bRecordedVoyageResult = true;
 		UE_LOG(LogAirlock, Log, TEXT("Voyage result: %s"), *Result.Summary());
 	}
+}
+
+bool AAirlockGameMode::AirHasAtmosphere() const
+{
+	const auto* GS = GetGameState<AAirlockGameState>();
+	return GS && GS->AirHasAtmosphere();
+}
+bool AAirlockGameMode::UpdateAtmosphereFlags()
+{
+	if (!HasAuthority() || !AirHasAtmosphere()) { return false; }
+	const auto Status = [this](FName Id)
+	{
+		const auto* M = ShipGraph.Modules().FindByPredicate([Id](const auto& Module) { return Module.Id == Id; });
+		return M ? M->Status : EShipModuleStatus::Nominal;
+	};
+	const auto Core = Status(TEXT("PowerCore"));
+	const auto Life = Status(TEXT("LifeSupport"));
+	bool bChanged = AtmosphereModel.SetScrubDisabled(Life == EShipModuleStatus::Failed);
+	bChanged |= AtmosphereModel.SetBrownout(Core != EShipModuleStatus::Nominal || Life == EShipModuleStatus::Degraded);
+	CargoModel.SetRackCoolFactor((Status(TEXT("CoolantLoop")) == EShipModuleStatus::Nominal ? 1.f : .5f)
+		* (AirGetScrubMode() == EScrubMode::Hazard && Core != EShipModuleStatus::Nominal ? .5f : 1.f));
+	return bChanged;
+}
+void AAirlockGameMode::PublishAtmosphere()
+{
+	auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !AirHasAtmosphere()) { return; }
+	FAtmosphereState Mirror = AtmosphereModel.State();
+	Mirror.Ppm = FMath::FloorToFloat(Mirror.Ppm);
+	const FAtmosphereState Old = GS->Atmosphere;
+	const FAtmosphereRates R;
+	bool bLog = Old.ScrubMode != Mirror.ScrubMode || Old.bBrownout != Mirror.bBrownout || Old.bScrubDisabled != Mirror.bScrubDisabled;
+	for (const float Threshold : { R.CleanPpm, R.WarnPpm, R.DangerPpm })
+	{
+		bLog |= (Old.Ppm >= Threshold) != (Mirror.Ppm >= Threshold);
+	}
+	GS->PublishAtmosphere(Mirror, AtmosphereModel.PuffingCrates());
+	// A single upward jump speaks only its highest crossed threshold.
+	if (Old.Ppm < R.DangerPpm && Mirror.Ppm >= R.DangerPpm)
+	{
+		SpeakAirCaptain(TEXT("Danger"), NSLOCTEXT("Airlock", "AirDanger", "Captain {0} here. Air's bad. Get those scrubbers up and keep moving."));
+	}
+	else if (Old.Ppm < R.WarnPpm && Mirror.Ppm >= R.WarnPpm)
+	{
+		SpeakAirCaptain(TEXT("Warn"), NSLOCTEXT("Airlock", "AirWarn", "Captain {0} here. Nitriles in the hold air. Scrubbers to hazard mode - the life-support panel."));
+	}
+	else if (Old.Ppm >= R.WarnPpm && Mirror.Ppm < R.WarnPpm)
+	{
+		SpeakAirCaptain(TEXT("Clear"), NSLOCTEXT("Airlock", "AirClear", "Captain {0} here. Air's clearing. Good work."));
+	}
+	if (bLog)
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Air %d ppm scrub=%s%s%s"), FMath::FloorToInt(Mirror.Ppm), FShipAtmosphere::ModeName(Mirror.ScrubMode),
+			Mirror.bBrownout ? TEXT(" brownout") : TEXT(""), Mirror.bScrubDisabled ? TEXT(" disabled") : TEXT(""));
+	}
+}
+bool AAirlockGameMode::AirSetScrubMode(EScrubMode Mode)
+{
+	if (!HasAuthority() || !AirHasAtmosphere()) { return false; }
+	if (Mode != EScrubMode::Off && Mode != EScrubMode::Normal && Mode != EScrubMode::Hazard) { return false; }
+	if (AtmosphereModel.SetScrubMode(Mode)) { UpdateAtmosphereFlags(); PublishAtmosphere(); }
+	return true;
+}
+bool AAirlockGameMode::AirSetPpm(float Ppm)
+{
+	if (!HasAuthority() || !AirHasAtmosphere() || !AtmosphereModel.SetPpm(Ppm)) { return false; }
+	PublishAtmosphere(); return true;
+}
+EScrubMode AAirlockGameMode::AirGetScrubMode() const { return AtmosphereModel.State().ScrubMode; }
+FString AAirlockGameMode::AirSummary() const { return AirHasAtmosphere() ? AtmosphereModel.Summary() : TEXT("No atmosphere on this section"); }
+
+void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* Pawn)
+{
+	if (!HasAuthority() || !GetWorld()) { return; }
+	const double Now = GetWorld()->GetTimeSeconds();
+	const double* Last = AirCaptainLastSpoken.Find(Cue);
+	if (Last && Now - *Last < 20.0) { return; }
+	AirCaptainLastSpoken.Add(Cue, Now);
+	const FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
+	UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); }
+	}
+}
+
+void AAirlockGameMode::NotifyBlackout(APawn* Pawn)
+{
+	const auto* Crew = Cast<AAirlockCharacter>(Pawn);
+	const auto* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !IsValid(Crew) || Crew->GetWorld() != GetWorld() || !Crew->bBlackedOut
+		|| !AirHasAtmosphere() || !GS || !GS->bVoyageActive) { return; }
+	const double* Counted = CountedBlackouts.Find(Pawn);
+	if (Counted && *Counted == Crew->BlackoutEndServerTime) { return; }
+	CountedBlackouts.Add(Pawn, Crew->BlackoutEndServerTime);
+	++BlackoutCount;
+	SpeakAirCaptain(TEXT("Blackout"), NSLOCTEXT("Airlock", "AirBlackout", "Captain {0} here. {1} is down - med-bot's on it."), Pawn);
 }

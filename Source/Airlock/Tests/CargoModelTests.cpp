@@ -1,6 +1,7 @@
 // Copyright Airlock project. All Rights Reserved.
 #include "Misc/AutomationTest.h"
 #include "Ship/CargoModel.h"
+#include "Ship/ShipAtmosphere.h"
 #include "Ship/CargoLayouts.h"
 #include "Ship/ShipGraph.h"
 #include "Ship/ShipLayouts.h"
@@ -181,6 +182,53 @@ bool FCargoTallyTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Carried does not change pay"), Result.Pay, 400);
 	Ship.DamageModule(TEXT("Nav"), 1);
 	TestTrue(TEXT("Hull is unrounded mean"), FMath::IsNearlyEqual(FCargoModel::Tally(M, Ship, Spec).ShipCondition, 699.f / 7.f));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoRackFactorTest, "Airlock.Cargo.RackCoolFactorClampsAndResets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoRackFactorTest::RunTest(const FString& Parameters)
+{
+	FCargoModel M = CargoTestManifest();
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("ColdRack")); M.SetTemperature(TEXT("C2"), 80);
+	M.SetRackCoolFactor(.5f); M.Tick(1, 0);
+	TestEqual(TEXT("Half power cools 2 degrees per second"), M.FindCrate(TEXT("C2"))->Temperature, 78.f);
+	M.SetRackCoolFactor(-1); M.Tick(1, 0);
+	TestEqual(TEXT("Lower clamp stops cooling"), M.FindCrate(TEXT("C2"))->Temperature, 78.f);
+	M.SetRackCoolFactor(2); M.Tick(1, 0);
+	TestEqual(TEXT("Upper clamp full cooling"), M.FindCrate(TEXT("C2"))->Temperature, 74.f);
+	M.SetRackCoolFactor(std::numeric_limits<float>::quiet_NaN()); M.Tick(1, 0);
+	TestEqual(TEXT("Invalid factor ignored"), M.FindCrate(TEXT("C2"))->Temperature, 70.f);
+	M.SetRackCoolFactor(0); M.Build(*CargoLayouts::Find(TEXT("Hauler_Mk1")));
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("ColdRack")); M.SetTemperature(TEXT("C2"), 80); M.Tick(1, 0);
+	TestEqual(TEXT("Build restores full cooling"), M.FindCrate(TEXT("C2"))->Temperature, 76.f);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoAirPayTest, "Airlock.Cargo.CleanAirBlackoutPayExamplesAndSummary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoAirPayTest::RunTest(const FString& Parameters)
+{
+	FShipGraph Ship; Ship.Build(*ShipLayouts::Find(TEXT("Hauler_Mk1")));
+	FCargoModel M = CargoTestManifest(); FVoyageSpec Spec; FAtmosphereState Air; Air.Ppm = 4;
+	M.PickUp(TEXT("C1")); M.Place(TEXT("C1"), TEXT("Clamp_1"));
+	M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("Clamp_2"));
+	M.PickUp(TEXT("C3")); M.Place(TEXT("C3"), TEXT("Clamp_3"));
+	M.PickUp(TEXT("C4")); M.Place(TEXT("C4"), TEXT("ColdRack"));
+	const auto Clean = FCargoModel::Tally(M, Ship, Spec, &Air);
+	TestEqual(TEXT("Four intact hull 100 air 4 pays 900"), Clean.Pay, 900);
+	TestTrue(TEXT("Clean recorded"), Clean.bCleanAir && Clean.DockPpm == 4 && Clean.Blackouts == 0);
+	Air.Ppm = 30; TestEqual(TEXT("Same cargo dirty air pays 750"), FCargoModel::Tally(M, Ship, Spec, &Air).Pay, 750);
+	Air.Ppm = 10; TestFalse(TEXT("Exactly 10 not clean"), FCargoModel::Tally(M, Ship, Spec, &Air).bCleanAir);
+	M.PickUp(TEXT("C3")); M.PutDown(TEXT("C3")); M.PickUp(TEXT("C4")); M.PutDown(TEXT("C4")); Air.Ppm = 4;
+	TestEqual(TEXT("Two intact clean air one blackout pays 500"), FCargoModel::Tally(M, Ship, Spec, &Air, 1).Pay, 500);
+	M = CargoTestManifest(); M.PickUp(TEXT("C2")); M.Place(TEXT("C2"), TEXT("ColdRack"));
+	const auto One = FCargoModel::Tally(M, Ship, Spec, &Air, 1);
+	TestEqual(TEXT("One racked clean air one blackout pays 400"), One.Pay, 400);
+	TestEqual(TEXT("With air summary"), One.Summary(), FString(TEXT("1/4 crates intact, 0 vented, 3 loose, hull 100.00%, pay 400, air 4 ppm, 1 blackouts")));
+	Air.Ppm = 30.9f; TestTrue(TEXT("Summary floors air"), FCargoModel::Tally(M, Ship, Spec, &Air).Summary().Contains(TEXT(", air 30 ppm, 0 blackouts")));
+	const auto Legacy = FCargoModel::Tally(M, Ship, Spec);
+	TestEqual(TEXT("No air summary remains unchanged"), Legacy.Summary(), FString(TEXT("1/4 crates intact, 0 vented, 3 loose, hull 100.00%, pay 300")));
+	TestTrue(TEXT("No air sentinel"), Legacy.DockPpm == -1 && !Legacy.bCleanAir && Legacy.Blackouts == 0);
+	TestEqual(TEXT("Pay cannot be negative"), FCargoModel::Tally(M, Ship, Spec, &Air, 100).Pay, 0);
 	return true;
 }
 #endif
