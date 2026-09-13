@@ -115,3 +115,46 @@ Scripts\run-tests.bat Airlock
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\verify-floor.ps1 -ProbePositions
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\verify-floor.ps1
 ```
+
+## Addendum: the merged tree (Claude, 2026-09-13 morning)
+
+Branch binary (worktree, port 8001, `claude/m5-2-refinery-floor` at 36926bd): `FLOOR OK`, 110 / 110 tests, and the
+eleven earlier proofs green - `verify-legibility.ps1` only after its hard-coded port-8000 guard was removed (it now
+honours `AIRLOCK_MCP_PORT` like every other proof).
+
+Merging into `main` (after Astra's M5-1) was not clean, and the record matters more than the fixes:
+
+- **`main` did not compile after the two merges**: `RefineryLayouts.cpp` (M5-2) and `CargoLayouts.cpp` (M3-4) both
+  defined `PalletMesh` in an anonymous namespace, and M5-1's extra translation unit shifted the unity-build
+  chunking so they landed in one chunk (`error C2374: redefinition`). Each branch built on its own. Fix on `main`
+  (65f6ae2): floor-specific names (`FloorTankMesh`, `FloorPalletMesh`, `FloorCabinetMesh`). Lesson for the brief
+  template: file-local constants get a file-specific prefix; a merge is rebuilt before it is called merged.
+- **The port-8000 editor was in two-client mode.** The first merged-tree batch failed `verify-incidents.ps1`,
+  `verify-cargo.ps1` and `verify-atmosphere.ps1` with `Incident director started: crew=2` (two PIE instances):
+  `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` carried `PlayNetMode=PIE_ListenServer` /
+  `PlayNumberOfClients=2` (the M4-1 two-client proof's mode, persisted by a PIE start; how it survived that
+  proof's restore is not established - a `set_properties` on the play settings with PIE stopped, followed by a PIE
+  start, does persist single-player, as a direct test showed). The review pipeline now forces the play settings to
+  single-player through the MCP before every batch; `verify-two-clients.ps1` sets and restores its own.
+- **One editor start crashed** (no crash folder; the log ends at the asset-registry cache write, the crash
+  reporter came up) while the other checkout was compiling the same target with UBT. Cause not proven; the
+  worktree's builds now wait for the other editor to be up. Killing the crashed process and restarting was enough.
+
+Merged-tree results (`main` at 65f6ae2 + the docs commit, port 8000, single-player forced, 136 / 136 tests):
+
+| Proof | Result |
+| --- | --- |
+| `verify-loop.ps1` | LOOP OK (52 s) |
+| `verify-ship-graph.ps1` | GRAPH OK (71 s) |
+| `verify-incidents.ps1` | INCIDENTS OK (58 s) |
+| `verify-voyage-clock.ps1` | CLOCK OK (116 s, with the floor hop) |
+| `verify-level-pass.ps1` | LEVEL OK (153 s) |
+| `verify-cargo.ps1` | CARGO OK (88 s) |
+| `verify-atmosphere.ps1` | ATMOSPHERE OK (125 s) |
+| `verify-fuel.ps1` | FUEL OK (148 s) |
+| `verify-refinery.ps1` | REFINERY OK (66 s) |
+| `verify-legibility.ps1` | LEGIBILITY OK (69 s) |
+| `verify-two-clients.ps1` | TWO CLIENTS OK (74 s, with the floor hop) |
+| `verify-floor.ps1` | FLOOR OK (90 s) |
+
+Twelve for twelve; the merge stands.

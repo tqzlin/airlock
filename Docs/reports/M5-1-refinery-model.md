@@ -284,3 +284,32 @@ git status --short --branch
 If a future close has to kill the editor, inspect `Saved/Autosaves/PackageRestoreData.json` as described in
 HANDOFF section 5 before relaunch; no such recovery was required in this run. The model-only test filter is
 `Scripts\run-tests.bat Airlock.Refinery.Model`, but acceptance here used the full `Airlock` filter every time.
+
+## Reviewer verification (Claude, 2026-09-13)
+
+Reviewed from Claude Code after Astra's process had exited (32 min, six commits, no GUI tool, the editor on port
+8000 left on StationHub with no PIE and both maps clean).
+
+- **Diff read** against the brief: the four allowed files only; every type, constant, verb and tick step of the
+  brief is there, in the house style (rates struct, state struct, floored publish compare, no UObject state, no
+  randomness, sub-stepped ticks, `operator==` on the replicated structs). The 26 tests cover every item of the
+  brief's list and script the 2,400-tick determinism run with inputs and events, as asked.
+- **The measured discrepancies are accepted as the model's facts**, not bugs, and the brief's prose is what was
+  off: the heavy recipe yields **74.7 %** with drift (the brief said "at least 75 %"; the design's own arithmetic
+  assumed 75 %), the pressure at vent 20 % **peaks at 2.25 bar** because the charge depletes as it feeds (so the
+  warning band is reached only by a vent under about 15 %, where the pop follows in 16 s with 5.5 s in the red -
+  the M5-3 gauge will show the needle rising, and the playtest decides whether the warning needs to be longer),
+  the heat-80 % bath settles at **288 K** under feed cooling so it never cokes hot (a still left dry at 80 % does),
+  and a drifted trap's loss goes to **tar**, not gas, under the brief's residual formula (pay-wise a 10 cr per 100 L
+  disposal fee instead of nothing; the design's "diesel quietly becomes gas" is a wording to fix). No constant was
+  tuned; the tests pin the real figures so any later tuning is visible.
+- **API notes for M5-3** (from Astra's handoff, agreed): handles use integer steps; the gauge composes
+  `StillReadout` plus `BatchProgress` and the batch cuts; knob setters are status-agnostic (a failed still's heat
+  can be raised again but it cannot feed - the actor may gate that); an idle still with a queued hopper takes the
+  next cask on the next tick even at feed zero, so the 8 s `SCRAPE` hold needs an empty hopper or a pause verb;
+  there is no litre ledger across destructive losses (`CasksLost` counts, `SpilledL` measures spills only).
+- **Tests**: `Scripts\run-tests.bat Airlock` headless on the branch, **130 / 130**; on the merged tree with M5-2,
+  see the M5-2 report's addendum.
+- **Merge**: `--no-ff` into `main` at 973fbcc, before M5-2 (no overlapping files). The model is not wired to the
+  floor yet: M5-3 puts it in the game mode's hands (the floor section owns it, ticks it at 4 Hz, replicates
+  `FRefineryState` on the game state) and gives it its actors.
