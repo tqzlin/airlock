@@ -25,4 +25,3 @@ bool FSetPieceScheduleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("All three causes"), Causes.Num(), 3); return true;
 }
 #endif
-
