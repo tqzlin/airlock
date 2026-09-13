@@ -136,6 +136,9 @@ TArray<FStillControlSpec> RefineryLayouts::StillControls(const FFloorFixtureSpec
 		// The east-end props raise Still 3's original vent/repair spots by 149-163 cm (PIE probe).
 		// Bring its working rows onto the clear walkway; keep the already-clear hopper beside the row.
 		if (Still.Id == TEXT("Still_3") && Kind != EStillControl::Hopper) { Offset.Y = -300; }
+		// The clear east walkway ramps up with X: feet -16 at VentPlus and +15 at the trap.
+		if (Still.Id == TEXT("Still_3") && Kind == EStillControl::VentPlus) { Offset.Z = 50; }
+		if (Still.Id == TEXT("Still_3") && Kind == EStillControl::Calibrate) { Offset.Z = 190; }
 		// At the original height the front lever labels overlap the prescribed batch gauge.
 		if (Still.Id != TEXT("Still_3") && Kind >= EStillControl::Reset && Kind <= EStillControl::Repair) { Offset.Z = 85; }
 		S.Kind = Kind; S.StillId = Still.Id; S.Id = FName(*(Still.Id.ToString() + TEXT("_") + Suffix));

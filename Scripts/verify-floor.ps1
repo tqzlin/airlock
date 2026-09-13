@@ -245,6 +245,7 @@ try {
     $null = Wait-FloorProofLine ': Hold Still_2_Reset rejected: Running' 10 $script:LastCommandAt
     Send-FloorCommand 'AirlockLook 90'
     Save-FloorCapture 'floor-still-gauges' 4
+    Send-FloorCommand 'AirlockWarp -5400 1450 116'
     Send-FloorCommand 'AirlockLook 90 -20'
     Save-FloorCapture 'floor-still-handles' 4
     Send-FloorCommand 'AirlockWarp -5800 1500 116'
