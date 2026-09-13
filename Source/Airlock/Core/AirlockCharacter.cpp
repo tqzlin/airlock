@@ -346,7 +346,20 @@ FVector AAirlockCharacter::PutDownLocation() const
 	FHitResult Hit;
 	FCollisionQueryParams Params(TEXT("CargoPutDown"), false, this);
 	Params.AddIgnoredActor(CarriedCrate);
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, Start - FVector(0, 0, 300), ECC_Visibility, Params)) { return Hit.ImpactPoint; }
+	// A cask lands on something the crew can see (M5-5): an interactable's invisible marker (a still control's box, a
+	// puddle's box, the seat) blocks the Visibility trace only for E, so the drop looks through it - before this a cask
+	// dropped in a puddle rested on the marker's top 30 cm up, and a drop whose trace started inside a control's
+	// marker (an initial overlap answers with the start point) hung 96 cm over the deck. Hidden shapes of other actors
+	// (a test world's floor box) still count as ground.
+	for (int32 Pass = 0; Pass < 4; ++Pass)
+	{
+		if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, Start - FVector(0, 0, 300), ECC_Visibility, Params)) { break; }
+		const UPrimitiveComponent* Surface = Hit.GetComponent();
+		const AActor* MarkerOwner = Surface ? Surface->GetOwner() : nullptr;
+		const bool bMarker = Surface && Surface->bHiddenInGame && MarkerOwner && MarkerOwner->Implements<UInteractable>();
+		if (!bMarker) { return Hit.ImpactPoint; }
+		Params.AddIgnoredComponent(Surface);
+	}
 	return FVector(Start.X, Start.Y, GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 }
 void AAirlockCharacter::DetachCarriedCrateAt(const FTransform& Transform)

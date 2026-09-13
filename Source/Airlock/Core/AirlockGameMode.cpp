@@ -1372,8 +1372,17 @@ FName AAirlockGameMode::HazardSpill(FName Still, float Litres)
 }
 bool AAirlockGameMode::HazardSqueegee(FName Id, APawn* By)
 {
-	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(By) || By->GetWorld() != GetWorld() || !HazardModel.Squeegee(Id)) { return false; }
-	UE_LOG(LogAirlock, Log, TEXT("Spill %s cleared by %s"), *Id.ToString(), *By->GetName());
+	if (!HasAuthority() || !RefineryHasFloor() || !IsValid(By) || By->GetWorld() != GetWorld()) { return false; }
+	const FFloorSpillState* Before = HazardModel.Find(Id);
+	const float LitresBefore = Before ? Before->Litres : 0.f;
+	if (!HazardModel.Squeegee(Id)) { return false; }
+	// One pass takes SqueegeeLitres; a bigger puddle says what is left so the crew knows to go again (M5-5 wording).
+	if (const FFloorSpillState* Left = HazardModel.Find(Id))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Spill %s squeegeed by %s: %d L off, %d L left"), *Id.ToString(), *By->GetName(),
+			FMath::FloorToInt(LitresBefore - Left->Litres), FMath::FloorToInt(Left->Litres));
+	}
+	else { UE_LOG(LogAirlock, Log, TEXT("Spill %s cleared by %s"), *Id.ToString(), *By->GetName()); }
 	PublishFloorHazards(); return true;
 }
 FName AAirlockGameMode::HazardContains(const FVector& Feet) const

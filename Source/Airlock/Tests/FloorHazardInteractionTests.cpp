@@ -218,6 +218,7 @@ bool FHazardHoldTest::RunTest(const FString& Parameters)
 	S.Mode->HazardSpill(TEXT("Still_2"), 400); Spill = S.Find<ASpill>(TEXT("S2"));
 	Crew->ServerBeginHold(Spill); S.Tick(6.25f);
 	TestEqual(TEXT("One hold leaves merged puddle"), S.Count<ASpill>(), 1);
+	TestEqual(TEXT("A partial pass says what is left"), Log.Count(TEXT("Spill S2 squeegeed by")), 1);
 	TestTrue(TEXT("Only 300 L plus evaporation removed"), S.State->FloorHazards.Spills[0].Litres > 90.f && S.State->FloorHazards.Spills[0].Litres < 100.f);
 	Crew->ServerBeginHold(Spill); S.Tick(6.25f); S.Tick(.25f);
 	TestEqual(TEXT("Second hold clears remainder"), S.Count<ASpill>(), 0);
@@ -243,7 +244,13 @@ bool FHazardGeometryTest::RunTest(const FString& Parameters)
 	auto* Crate = S.Carry(Crew, TEXT("C3")); Crew->SetActorLocation(Point + FVector(0, 0, 96)); Crew->SetActorRotation(FRotator::ZeroRotator);
 	Crew->ServerPutDown();
 	TestEqual(TEXT("120 cm forward drop retained"), Crate->GetActorLocation().X, Point.X + 120, .1);
-	TestEqual(TEXT("Visibility marker intercepts the floor trace 30 cm above the deck"), Crate->GetActorLocation().Z, Point.Z + 30, .1);
+	// M5-5: the put-down trace looks through invisible interaction markers, so the cask rests on the crude's disc (up to
+	// 2 cm over the deck; the test world has no deck mesh under it), not on the marker box 30 cm up.
+	TestTrue(TEXT("Cask lands on the crude, not on the marker"), Crate->GetActorLocation().Z <= Point.Z + 2.1 && Crate->GetActorLocation().Z >= Point.Z - .1);
+	// A drop whose trace starts inside the marker box (the live case: the crew's origin inside a control's marker) is
+	// looked through as well instead of landing at the trace start.
+	Crew->ServerPickUp(Crate); Crew->SetActorLocation(Point + FVector(0, 0, 10)); Crew->ServerPutDown();
+	TestTrue(TEXT("A drop starting inside the marker still lands on the crude"), Crate->GetActorLocation().Z <= Point.Z + 2.1 && Crate->GetActorLocation().Z >= Point.Z - .1);
 	AddInfo(FString::Printf(TEXT("Literal geometry: dry ring %.3f cm; put-down Z %.3f at deck Z %.3f"), DryRing, Crate->GetActorLocation().Z, Point.Z));
 	return true;
 }
