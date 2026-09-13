@@ -96,3 +96,14 @@ The `AGENTS.md` "What the game is" line would change from "instanced ~20-minute 
 ## 8. Next step
 
 If the direction holds, the M3-5 brief (atmosphere + scrubbers) is written from sections 3 to 6 of this note, red-teamed as before, and handed to Astra. If only one of the two new systems can go first, the fuel beat (M3-6) is the stronger one — it is the reversal that makes the run a story — and the atmosphere can follow it.
+
+## 9. Changes since this note (2026-09-12, at brief time)
+
+Recorded so the note and the briefs never disagree; the briefs win.
+
+- **Pay**: the first draft forgot M3-4's clean-manifest bonus. A clean solo run pays 900, not 750; burning one cask pays 610; a burned cask voids the manifest bonus.
+- **The mixture needle is deferred** to the timing-calls milestone (first note, 8.1 lever 3). In M3-6 the bypass burns each cask on its own over 20 s; the cost is fouling (Engines -10 per cask, -20 while the injectors are fouled, a hold-E clear every second cask), soot into the hold air, and the 40 cr fine. The decision of *which* cask to burn is kept.
+- **Start fuel is 90 units**, not 80: 80 at 4 per minute is exactly the 20-minute run, and a clean run must never brush exhaustion. A leak left open for a minute still leaves the ship two casks short.
+- **The scrub control is the life-support panel only** in M3-5; the control seat shows the air and scrubber readouts but does not switch them (E at the seat stands you up).
+- **Exposure lives on the pawn**: a crew member who blacks out is down for 30 s, then carries on at 50 % exposure; seamless travel spawns a fresh pawn, so the hub starts clean.
+- Names, tone and the refinery-as-a-place questions in section 7 are still Tom's.
