@@ -1,8 +1,9 @@
 # M5-2 PIE proof: the refinery floor. Run from the repo root with a clean StationHub open (port from AIRLOCK_MCP_PORT,
 # default 8000):
 #   powershell -ExecutionPolicy Bypass -File Scripts/verify-floor.ps1 [-ProbePositions]
-# The ship docks (clock expiry) on the floor with the run's intact casks on the pallets, Okafor runs the slot, the
-# slot's end takes everyone home with the combined result. Only the file console drives gameplay; captures and the log
+# The ship docks (clock expiry) on the floor with the run's intact casks on the pallets, Okafor runs the slot, C1 is
+# refined in Still 1 by console (M5-3a: knobs, load, the batch, the tank), the slot's end takes everyone home with the
+# combined result and the diesel surplus on the Rig's board. Only the file console drives gameplay; captures and the log
 # excerpt land in Saved/AgentCaptures/M5-2; HUD text is capture-only. -ProbePositions instead opens the floor map,
 # drops the pawn on every fixture, cask and panel spot and reports where its feet settle (the layout Z is the
 # starting value; the report is what the table is tuned from).
@@ -158,6 +159,20 @@ try {
     $null = Wait-FloorProofLine ': Air 0 ppm scrub=Normal' 10 $script:LastCommandAt
     Send-FloorCommand 'AirlockShipStatus'
     $null = Wait-FloorProofLine ': Ship LifeSupport Nominal' 10 $script:LastCommandAt
+
+    # The stills (M5-3a): three idle stills and an empty tank; Still 1 preheats at heat 40 % while the captures run.
+    Send-FloorCommand 'AirlockRefinery'
+    $null = Wait-FloorProofLine ': Still_1 Idle T=92' 10 $script:LastCommandAt
+    $null = Wait-FloorProofLine ': Tank diesel=0 gas=0 tar=0' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockKnob Still_1 Heat 8'
+    $null = Wait-FloorProofLine ': Refinery Still_1 heat 8/20' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockKnob Still_1 Feed 10'
+    $null = Wait-FloorProofLine ': Refinery Still_1 feed 10/20' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockStill Still_1 Reset'
+    $null = Wait-FloorProofLine ': Refinery Still_1 Reset rejected: Idle' 10 $script:LastCommandAt
+    Send-FloorCommand 'AirlockStillLoad Still_1 C9'
+    $null = Wait-FloorProofLine ': Refinery load rejected: no such cask' 10 $script:LastCommandAt
+    $preheatAt = [DateTime]::UtcNow
     Save-FloorCapture 'floor-arrival'
     Send-FloorCommand 'AirlockWarp -6000 1560 116'
     Send-FloorCommand 'AirlockLook -90'
@@ -171,22 +186,48 @@ try {
     Send-FloorCommand 'AirlockLook 0'
     Save-FloorCapture 'floor-east' 4
 
+    # C1 into Still 1's hopper at feed 50 %: the batch runs about 100 s and the tank fills (M5-1's recipe, about 747 L).
+    $elapsed = ([DateTime]::UtcNow - $preheatAt).TotalSeconds
+    if ($elapsed -lt 30) { Start-Sleep -Seconds ([int](30 - $elapsed)) }
+    $loadAt = [DateTime]::UtcNow
+    Send-FloorCommand 'AirlockStillLoad Still_1 C1'
+    $null = Wait-FloorProofLine ': Refinery Still_1 loaded C1' 10 $loadAt '(hopper 1/3)'
+    $null = Wait-FloorProofLine ': Cargo C1 Loaded' 10 $loadAt
+    $null = Wait-FloorProofLine ': Still Still_1 Running cask=C1' 10 $loadAt
+    Send-FloorCommand 'AirlockWarp -5800 1500 116'
+    Send-FloorCommand 'AirlockLook 90'
+    Save-FloorCapture 'floor-still-running' 4
+    $null = Wait-FloorProofLine ': Tank 300 L diesel' 90 $loadAt
+    $null = Wait-FloorProofLine ': Refinery BatchDone Still_1 C1' 120 $loadAt
+    $null = Wait-FloorProofLine ": Okafor: That's diesel in the tank" 10 $loadAt
+    $null = Wait-FloorProofLine ': Still Still_1 Idle' 10 $loadAt
+    Send-FloorCommand 'AirlockRefinery'
+    $tank = Wait-FloorProofLine ': Tank diesel=' 10 $script:LastCommandAt
+    $litres = [int][regex]::Match([string]$tank, 'Tank diesel=(\d+)').Groups[1].Value
+    if ($litres -lt 600) { throw "The batch yielded too little: $tank" }
+    Send-FloorCommand 'AirlockTally'
+    $null = Wait-FloorProofLine ': Floor tally now: floor: 1/2 casks refined' 10 $script:LastCommandAt
+    Save-FloorCapture 'floor-tank' 2
+
     # The slot's end: the horn, the combined result, the card home, the hub board.
     $hornAt = [DateTime]::UtcNow
     Send-FloorCommand 'AirlockVoyageClock 5'
     $null = Wait-FloorProofLine ': Horn. Slot' 30 $hornAt
-    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 0/2 casks refined, 0 L diesel, pay 80'
+    $null = Wait-FloorProofLine ': Floor result: floor: 1/2 casks refined' 30 $hornAt
+    $null = Wait-FloorProofLine ': Voyage result:' 30 $hornAt '| floor: 1/2 casks refined,'
     $null = Wait-FloorProofLine 'Transition card: UNDOCKING - HOME TO THE VELL EXTRACTOR' 30 $hornAt
     $null = Wait-FloorProofLine ': Arrival spawn for' 45 $hornAt 'X=-5640.'
     Start-Sleep -Seconds 6
     Send-FloorCommand 'AirlockWhere'
     Assert-FloorArrival 'StationHub' -5640
-    $null = Wait-FloorProofLine ': Base fuel' 10 $hornAt
+    $base = Wait-FloorProofLine ': Base fuel' 10 $hornAt
+    $tonnes = [int][regex]::Match([string]$base, '\(\+(\d+) this run\)').Groups[1].Value
+    if ($tonnes -lt 5) { throw "The diesel surplus did not reach the Rig: $base" }
     Send-FloorCommand 'AirlockBoard'
     Save-FloorCapture 'hub-board-floor' 3
     Send-FloorCommand 'AirlockSaveReset'
     $null = Wait-FloorProofLine ': Save reset:' 10 $script:LastCommandAt
-    Write-Host 'FLOOR OK: Milk run -> C1 secured, C2 racked -> clock docks at the refinery -> floor: two casks on the pallets, Okafor, air, scrubber panel, six fixtures -> horn -> combined result, undocking card -> hub board, save reset'
+    Write-Host "FLOOR OK: Milk run -> C1 secured, C2 racked -> clock docks at the refinery -> floor: two casks on the pallets, Okafor, air, scrubber panel, six fixtures -> Still 1 at heat 40 % / feed 50 %, C1 loaded, batch done, $litres L in the tank -> horn -> combined result (1/2 refined, +$tonnes t), undocking card -> hub board, save reset"
 }
 finally {
     if ($script:StartedPIE) {

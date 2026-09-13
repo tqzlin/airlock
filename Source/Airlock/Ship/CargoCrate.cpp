@@ -110,7 +110,7 @@ void ACargoCrate::RefreshLabel()
 		? FLinearColor(1.f, .6f, .1f) : FLinearColor::White;
 	ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, LabelHeight));
 	ShipVisuals::ConfigureLabel(StateLabel, LabelSize, Spec.LabelYaw, Colour, FVector(0, 0, LabelHeight - LabelSize));
-	const bool bShowLabel = State->State != ECargoState::Carried && State->State != ECargoState::Burned;
+	const bool bShowLabel = State->State != ECargoState::Carried && !FCargoModel::IsConsumed(State->State);
 	Label->SetVisibility(bShowLabel);
 	StateLabel->SetVisibility(bShowLabel);
 }
@@ -119,7 +119,7 @@ void ACargoCrate::Refresh()
 	const auto* State = GetCargoState();
 	if (!State || !bVisualsReady) { return; }
 	RefreshLabel();
-	const bool bBurned = State->State == ECargoState::Burned;
+	const bool bBurned = FCargoModel::IsConsumed(State->State);
 	SetActorHiddenInGame(bBurned);
 	SetActorEnableCollision(!bBurned);
 	const FCargoRates Rates;
@@ -159,7 +159,7 @@ void ACargoCrate::FlickerPuffLight()
 FText ACargoCrate::GetInteractPrompt_Implementation() const
 {
 	const auto* State = GetCargoState();
-	if (!State || State->State == ECargoState::Carried || State->State == ECargoState::Vented || State->State == ECargoState::Burned) { return FText::GetEmpty(); }
+	if (!State || State->State == ECargoState::Carried || State->State == ECargoState::Vented || FCargoModel::IsConsumed(State->State)) { return FText::GetEmpty(); }
 	return FText::Format(NSLOCTEXT("Airlock", "CargoPickUp", "Pick up {0}"), FText::FromName(Spec.Id));
 }
 

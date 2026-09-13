@@ -199,6 +199,7 @@ void AAirlockGameMode::BeginPlay()
 	BuildCargo();
 	BuildStationSigns();
 	BuildFloorFixtures();
+	BuildRefinery();
 	BuildFuel();
 
 	int32 Bound = 0;
@@ -590,6 +591,7 @@ void AAirlockGameMode::TickShipGraph()
 		const bool bAirChanged = AtmosphereModel.Tick(0.25f, CargoModel.Crates());
 		if (bAirChanged || bAirFlagsChanged) { PublishAtmosphere(); }
 	}
+	TickRefinery();
 	TickFuel();
 }
 
@@ -771,14 +773,19 @@ void AAirlockGameMode::RecordVoyageResult()
 		if (!Voyages->GetShipResult(Result)) { Result = CargoTally(); }
 		if (IsFloorSection())
 		{
-			// M5-2: nothing is refined yet - every delivered cask goes home as crude (M5-3 fills these from FFloorResult).
+			// M5-3a: the floor's fields and the base fuel come from the refinery model's tally (the flat per-cask fuel
+			// of M3-7 now only applies to a ship that left through its own airlock without docking).
+			const FFloorResult Floor = RefineryTally();
 			Result.bHasFloor = true;
-			Result.FloorCasksTotal = CargoModel.Crates().Num();
-			Result.FloorCasksRefined = 0;
-			Result.FloorCasksUnrefined = Result.FloorCasksTotal;
-			Result.FloorDieselL = 0;
-			Result.FloorPay = FloorCrudeSaleCr * Result.FloorCasksUnrefined;
-			Result.Pay += Result.FloorPay;
+			Result.FloorCasksTotal = Floor.CasksTotal;
+			Result.FloorCasksRefined = Floor.CasksRefined;
+			Result.FloorCasksUnrefined = Floor.CasksUnrefined;
+			Result.FloorDieselL = FMath::FloorToInt(Floor.DieselL);
+			Result.FloorPay = Floor.Pay;
+			Result.Pay += Floor.Pay;
+			Result.FuelCredit = FMath::FloorToInt(Floor.RefuelUnits);
+			Result.FuelSurplus = Floor.BaseFuelTonnes;
+			UE_LOG(LogAirlock, Log, TEXT("Floor result: %s"), *Floor.Summary());
 		}
 		Voyages->SetLastVoyageResult(Result);
 		Voyages->ClearShipResult();
@@ -886,7 +893,7 @@ void AAirlockGameMode::SpeakAirCaptain(FName Cue, const FText& Pattern, APawn* P
 	if (Last && Now - *Last < 20.0) { return; }
 	AirCaptainLastSpoken.Add(Cue, Now);
 	const FText Line = FText::Format(Pattern, FText::FromName(ActiveVoyage.Captain), FText::FromString(GetNameSafe(Pawn)));
-	UE_LOG(LogAirlock, Log, TEXT("Captain %s: %s"), *ActiveVoyage.Captain.ToString(), *Line.ToString());
+	UE_LOG(LogAirlock, Log, TEXT("%s: %s"), *SpeakerName(), *Line.ToString());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (auto* PC = Cast<AAirlockPlayerController>(It->Get())) { PC->ClientCaptainSays(Line); }
@@ -1062,3 +1069,255 @@ bool AAirlockGameMode::AllowCheats(APlayerController* /*Player*/)
 {
 	return CVarAirlockDevCheats.GetValueOnGameThread() != 0;
 }
+
+// --- The refinery model on the floor (M5-3a) ---
+namespace
+{
+	int32 RefineryKnobValue(const FStillState& Still, ERefineryKnob Knob)
+	{
+		switch (Knob)
+		{
+		case ERefineryKnob::Heat: return Still.HeatSteps;
+		case ERefineryKnob::Feed: return Still.FeedSteps;
+		case ERefineryKnob::Vent: return Still.VentSteps;
+		default: return 0;
+		}
+	}
+}
+
+bool AAirlockGameMode::RefineryHasFloor() const
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	return GS && GS->RefineryHasFloor();
+}
+
+void AAirlockGameMode::BuildRefinery()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS) { return; }
+	const FRefineryLayout* Layout = RefineryLayouts::Find(GS->CurrentSectionId);
+	if (!Layout) { return; }
+	// The manifest is the cargo model's (the ship result's intact casks, M5-2); a light cask is the ship's volatile one.
+	TArray<FRefineryCask> Casks;
+	for (const FCargoCrateState& Crate : CargoModel.Crates())
+	{
+		FRefineryCask Cask; Cask.Id = Crate.Id; Cask.bLight = Crate.bVolatile; Casks.Add(Cask);
+	}
+	RefineryModel.Build(RefineryLayouts::StillCount(*Layout), Casks);
+	bFirstBatchSpoken = false;
+	PublishRefinery();
+	UE_LOG(LogAirlock, Log, TEXT("Refinery: %d stills, %d casks delivered"), RefineryModel.State().Stills.Num(), Casks.Num());
+}
+
+void AAirlockGameMode::TickRefinery()
+{
+	const AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !GS->bVoyageActive || !RefineryHasFloor()) { return; }
+	const float RoomPpm = AirHasAtmosphere() ? AtmosphereModel.State().Ppm : 0.f;
+	float Added = 0.f;
+	TArray<FRefineryEvent> Events;
+	const bool bChanged = RefineryModel.Tick(0.25f, RoomPpm, Added, Events);
+	// The stills fume into the same air the casks puff into; the vent's excess and the gas cut arrive per tick.
+	if (Added > 0.f && AirHasAtmosphere() && AtmosphereModel.AddPpm(Added)) { PublishAtmosphere(); }
+	ApplyRefineryEvents(Events);
+	if (bChanged || !Events.IsEmpty()) { PublishRefinery(); }
+}
+
+void AAirlockGameMode::PublishRefinery()
+{
+	AAirlockGameState* GS = GetGameState<AAirlockGameState>();
+	if (!HasAuthority() || !GS || !RefineryHasFloor()) { return; }
+	const FRefineryRates& Rates = RefineryModel.Rates;
+	FRefineryState Mirror = RefineryModel.State();
+	auto Tens = [](float Value) { return FMath::FloorToFloat(Value / 10.f) * 10.f; };
+	for (FStillState& S : Mirror.Stills)
+	{
+		S.TempK = FMath::FloorToFloat(S.TempK);
+		S.PressureBar = FMath::RoundToFloat(S.PressureBar * 20.f) / 20.f;
+		S.Calibration = FMath::FloorToFloat(S.Calibration * 100.f) / 100.f;
+		S.Coke = FMath::FloorToFloat(S.Coke);
+		S.Condition = FMath::FloorToFloat(S.Condition);
+		S.ChargeL = Tens(S.ChargeL);
+		S.BatchDieselL = Tens(S.BatchDieselL); S.BatchGasL = Tens(S.BatchGasL); S.BatchTarL = Tens(S.BatchTarL);
+		S.FloodSeconds = FMath::FloorToFloat(S.FloodSeconds);
+	}
+	Mirror.TankDieselL = FMath::FloorToFloat(Mirror.TankDieselL);
+	Mirror.TotalGasL = FMath::FloorToFloat(Mirror.TotalGasL);
+	Mirror.TotalTarL = FMath::FloorToFloat(Mirror.TotalTarL);
+	Mirror.SpilledL = FMath::FloorToFloat(Mirror.SpilledL);
+	for (const FStillState& S : Mirror.Stills)
+	{
+		const FStillState* Old = GS->Refinery.Stills.FindByPredicate([&S](const FStillState& O) { return O.Id == S.Id; });
+		const FString Id = S.Id.ToString();
+		if (!Old || Old->Status != S.Status || Old->CurrentCask != S.CurrentCask)
+		{
+			if (S.CurrentCask.IsNone()) { UE_LOG(LogAirlock, Log, TEXT("Still %s %s"), *Id, RefineryLayouts::StatusName(S.Status)); }
+			else { UE_LOG(LogAirlock, Log, TEXT("Still %s %s cask=%s"), *Id, RefineryLayouts::StatusName(S.Status), *S.CurrentCask.ToString()); }
+		}
+		const bool bWasHigh = Old && Old->PressureBar >= Rates.WarnBar;
+		if ((S.PressureBar >= Rates.WarnBar) != bWasHigh)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Still %s pressure %.2f bar - %s"), *Id, S.PressureBar, bWasHigh ? TEXT("back under the warning band") : TEXT("warning band"));
+		}
+		if (Old && Old->bFouled != S.bFouled) { UE_LOG(LogAirlock, Log, TEXT("Still %s %s"), *Id, S.bFouled ? TEXT("fouled") : TEXT("clean")); }
+		const bool bWasDrifted = Old && Old->Calibration < Rates.CalWarn;
+		if ((S.Calibration < Rates.CalWarn) != bWasDrifted)
+		{
+			UE_LOG(LogAirlock, Log, TEXT("Still %s calibration %d%% - %s"), *Id, FMath::FloorToInt(S.Calibration * 100.f), bWasDrifted ? TEXT("calibrated") : TEXT("drifted"));
+		}
+	}
+	if (FMath::FloorToInt(GS->Refinery.TankDieselL / 100.f) != FMath::FloorToInt(Mirror.TankDieselL / 100.f))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Tank %d L diesel"), FMath::FloorToInt(Mirror.TankDieselL));
+	}
+	GS->PublishRefinery(Mirror);
+}
+
+void AAirlockGameMode::ApplyRefineryEvents(const TArray<FRefineryEvent>& Events)
+{
+	for (const FRefineryEvent& E : Events)
+	{
+		const FString Still = E.StillId.ToString();
+		const FString Cask = E.CaskId.ToString();
+		const FText Name = FText::FromString(Still.Replace(TEXT("_"), TEXT(" ")));
+		switch (E.Type)
+		{
+		case ERefineryEvent::BatchDone:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery BatchDone %s %s diesel=%d gas=%d tar=%d"), *Still, *Cask,
+				FMath::FloorToInt(E.DieselL), FMath::FloorToInt(E.GasL), FMath::FloorToInt(E.TarL));
+			if (!bFirstBatchSpoken)
+			{
+				bFirstBatchSpoken = true;
+				SpeakFloorLine(TEXT("FirstBatch"), NSLOCTEXT("Airlock", "OkaforFirstBatch", "That's diesel in the tank. Keep them coming."));
+			}
+			break;
+		case ERefineryEvent::Spill:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery Spill %s %s litres=%d"), *Still, *Cask, FMath::FloorToInt(E.Litres));
+			SpeakFloorLine(TEXT("Spill"), FText::Format(NSLOCTEXT("Airlock", "OkaforSpill", "Flood on {0} - crude over the lip. Feed down, and mind your footing, it's slick."), Name));
+			break;
+		case ERefineryEvent::Pop:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery Pop %s %s litres=%d"), *Still, *Cask, FMath::FloorToInt(E.Litres));
+			SpeakFloorLine(TEXT("Pop"), FText::Format(NSLOCTEXT("Airlock", "OkaforPop", "{0}'s relief just blew. Vent it wide, reset the trap, and keep your face out of that cloud."), Name));
+			break;
+		case ERefineryEvent::Flash:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery Flash %s %s"), *Still, *Cask);
+			SpeakFloorLine(TEXT("Flash"), FText::Format(NSLOCTEXT("Airlock", "OkaforFlash", "Flash on {0}! Kill the heat and purge it. Anyone who breathed that sits down before they fall down."), Name));
+			break;
+		case ERefineryEvent::Fouled:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery Fouled %s"), *Still);
+			SpeakFloorLine(TEXT("Fouled"), FText::Format(NSLOCTEXT("Airlock", "OkaforFouled", "{0}'s coking up - you're getting half the cut. Scrape it when the hopper's empty."), Name));
+			break;
+		case ERefineryEvent::Failed:
+			UE_LOG(LogAirlock, Log, TEXT("Refinery Failed %s"), *Still);
+			SpeakFloorLine(TEXT("Failed"), FText::Format(NSLOCTEXT("Airlock", "OkaforFailed", "{0}'s dead - coked solid. Get it repaired or write it off."), Name));
+			break;
+		default: break;
+		}
+	}
+}
+
+void AAirlockGameMode::SpeakFloorLine(FName Cue, const FText& Line)
+{
+	if (!HasAuthority() || !GetWorld()) { return; }
+	const double Now = GetWorld()->GetTimeSeconds();
+	const double* Last = AirCaptainLastSpoken.Find(Cue);
+	if (Last && Now - *Last < 20.0) { return; }
+	AirCaptainLastSpoken.Add(Cue, Now);
+	SpeakVoyageLine(Line);
+}
+
+bool AAirlockGameMode::RefineryLoadHopper(FName Still, FName Cask)
+{
+	if (!HasAuthority()) { return false; }
+	FString Reason;
+	const FCargoCrateState* Crate = CargoModel.FindCrate(Cask);
+	const FStillState* S = RefineryModel.FindStill(Still);
+	if (!RefineryHasFloor()) { Reason = TEXT("no stills on this section"); }
+	else if (!S) { Reason = TEXT("no such still"); }
+	else if (!Crate) { Reason = TEXT("no such cask"); }
+	else if (Crate->State != ECargoState::Loose && Crate->State != ECargoState::Carried) { Reason = FString::Printf(TEXT("cask is %s"), FCargoModel::StateName(Crate->State)); }
+	else if (S->Hopper.Num() >= RefineryModel.Rates.HopperCasks) { Reason = TEXT("hopper full"); }
+	else if (!RefineryModel.LoadHopper(Still, Cask)) { Reason = TEXT("model refused"); }
+	if (!Reason.IsEmpty())
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Refinery load rejected: %s (%s into %s)"), *Reason, *Cask.ToString(), *Still.ToString());
+		return false;
+	}
+	if (!CargoModel.Load(Cask)) { UE_LOG(LogAirlock, Warning, TEXT("Refinery load: the cargo model refused %s after the hopper took it"), *Cask.ToString()); }
+	PublishCargo();
+	PublishRefinery();
+	UE_LOG(LogAirlock, Log, TEXT("Refinery %s loaded %s (hopper %d/%d)"), *Still.ToString(), *Cask.ToString(), S->Hopper.Num(), RefineryModel.Rates.HopperCasks);
+	return true;
+}
+
+bool AAirlockGameMode::RefinerySetKnob(FName Still, ERefineryKnob Knob, int32 Steps)
+{
+	if (!HasAuthority() || !RefineryHasFloor() || !RefineryModel.SetKnob(Still, Knob, Steps))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s rejected"), *Still.ToString(), RefineryLayouts::KnobName(Knob));
+		return false;
+	}
+	PublishRefinery();
+	UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s %d/%d"), *Still.ToString(), RefineryLayouts::KnobName(Knob),
+		RefineryKnobValue(*RefineryModel.FindStill(Still), Knob), RefineryModel.Rates.KnobSteps);
+	return true;
+}
+
+bool AAirlockGameMode::RefineryStepKnob(FName Still, ERefineryKnob Knob, int32 Delta)
+{
+	if (!HasAuthority() || !RefineryHasFloor() || !RefineryModel.StepKnob(Still, Knob, Delta))
+	{
+		UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s rejected"), *Still.ToString(), RefineryLayouts::KnobName(Knob));
+		return false;
+	}
+	PublishRefinery();
+	UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s %d/%d"), *Still.ToString(), RefineryLayouts::KnobName(Knob),
+		RefineryKnobValue(*RefineryModel.FindStill(Still), Knob), RefineryModel.Rates.KnobSteps);
+	return true;
+}
+
+bool AAirlockGameMode::RefineryLever(FName Still, ERefineryLever Lever)
+{
+	bool bOk = HasAuthority() && RefineryHasFloor();
+	if (bOk)
+	{
+		switch (Lever)
+		{
+		case ERefineryLever::Reset: bOk = RefineryModel.ClearPop(Still); break;
+		case ERefineryLever::Purge: bOk = RefineryModel.Purge(Still); break;
+		case ERefineryLever::Scrape: bOk = RefineryModel.Scrape(Still); break;
+		case ERefineryLever::Repair: bOk = RefineryModel.Repair(Still); break;
+		case ERefineryLever::Calibrate: bOk = RefineryModel.Calibrate(Still); break;
+		default: bOk = false; break;
+		}
+	}
+	if (!bOk)
+	{
+		const FStillState* S = RefineryModel.FindStill(Still);
+		UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s rejected: %s"), *Still.ToString(), RefineryLayouts::LeverName(Lever),
+			!RefineryHasFloor() ? TEXT("no stills on this section") : S ? RefineryLayouts::StatusName(S->Status) : TEXT("no such still"));
+		return false;
+	}
+	PublishRefinery();
+	UE_LOG(LogAirlock, Log, TEXT("Refinery %s %s"), *Still.ToString(), RefineryLayouts::LeverDone(Lever));
+	return true;
+}
+
+FFloorResult AAirlockGameMode::RefineryTally() const
+{
+	float Missing = 0.f;
+	FVoyageResult Ship;
+	const UVoyageSubsystem* Voyages = GetGameInstance() ? GetGameInstance()->GetSubsystem<UVoyageSubsystem>() : nullptr;
+	if (Voyages && Voyages->GetShipResult(Ship) && Ship.FuelUnitsAtDock >= 0.f)
+	{
+		Missing = FMath::Max(0.f, FFuelRates().Capacity - Ship.FuelUnitsAtDock);
+	}
+	return RefineryModel.Tally(BlackoutCount, Missing);
+}
+
+FString AAirlockGameMode::RefinerySummary() const
+{
+	return RefineryHasFloor() ? RefineryModel.Summary() : FString(TEXT("No stills on this section"));
+}
+
+FString AAirlockGameMode::RefineryStillReadout(FName Still) const { return RefineryModel.StillReadout(Still); }

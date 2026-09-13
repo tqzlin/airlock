@@ -287,6 +287,7 @@ void AAirlockCharacter::ServerPickUp_Implementation(ACargoCrate* Crate)
 	const auto* State = Crate->GetCargoState();
 	if (!State) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: missing cargo state")); return; }
 	if (State->State == ECargoState::Burned) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: burned")); return; }
+	if (State->State == ECargoState::Loaded) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: loaded into a still")); return; }
 	if (State->State == ECargoState::Vented) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: vented")); return; }
 	if (State->State == ECargoState::Carried) { UE_LOG(LogAirlock, Log, TEXT("PickUp rejected: already carried")); return; }
 	auto* GM = GetWorld()->GetAuthGameMode<AAirlockGameMode>();
@@ -365,6 +366,8 @@ void AAirlockCharacter::CheckCarriedCargo()
 	const auto* State = CarriedCrate->GetCargoState();
 	// Delegate notification frees a vented carrier in the same publication; Tick also covers late binding.
 	if (State && State->State == ECargoState::Vented) { ServerPutDown(); }
+	// A cask loaded into a still out of the carrier's hands (M5-3a) leaves them where it is; the crate hides itself.
+	else if (State && State->State == ECargoState::Loaded) { DetachCarriedCrateAt(CarriedCrate->GetActorTransform()); }
 }
 
 // --- Control-room seat ---

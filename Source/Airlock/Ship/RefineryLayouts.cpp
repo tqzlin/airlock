@@ -47,3 +47,78 @@ const FRefineryLayout* RefineryLayouts::Find(FName SectionId)
 	}();
 	return SectionId == Floor.SectionId ? &Floor : nullptr;
 }
+
+int32 RefineryLayouts::StillCount(const FRefineryLayout& Layout)
+{
+	int32 Count = 0;
+	for (const FFloorFixtureSpec& Spec : Layout.Fixtures) { Count += Spec.Kind == EFloorFixtureKind::Still; }
+	return Count;
+}
+
+const TCHAR* RefineryLayouts::KnobName(ERefineryKnob Knob)
+{
+	switch (Knob)
+	{
+	case ERefineryKnob::Heat: return TEXT("heat");
+	case ERefineryKnob::Feed: return TEXT("feed");
+	case ERefineryKnob::Vent: return TEXT("vent");
+	default: return TEXT("unknown");
+	}
+}
+
+bool RefineryLayouts::ParseKnob(const FString& Text, ERefineryKnob& OutKnob)
+{
+	for (const ERefineryKnob Knob : { ERefineryKnob::Heat, ERefineryKnob::Feed, ERefineryKnob::Vent })
+	{
+		if (Text.Equals(KnobName(Knob), ESearchCase::IgnoreCase)) { OutKnob = Knob; return true; }
+	}
+	return false;
+}
+
+const TCHAR* RefineryLayouts::LeverName(ERefineryLever Lever)
+{
+	switch (Lever)
+	{
+	case ERefineryLever::Reset: return TEXT("Reset");
+	case ERefineryLever::Purge: return TEXT("Purge");
+	case ERefineryLever::Scrape: return TEXT("Scrape");
+	case ERefineryLever::Repair: return TEXT("Repair");
+	case ERefineryLever::Calibrate: return TEXT("Calibrate");
+	default: return TEXT("Unknown");
+	}
+}
+
+const TCHAR* RefineryLayouts::LeverDone(ERefineryLever Lever)
+{
+	switch (Lever)
+	{
+	case ERefineryLever::Reset: return TEXT("reset");
+	case ERefineryLever::Purge: return TEXT("purged");
+	case ERefineryLever::Scrape: return TEXT("scraped");
+	case ERefineryLever::Repair: return TEXT("repaired");
+	case ERefineryLever::Calibrate: return TEXT("calibrated");
+	default: return TEXT("unknown");
+	}
+}
+
+bool RefineryLayouts::ParseLever(const FString& Text, ERefineryLever& OutLever)
+{
+	for (const ERefineryLever Lever : { ERefineryLever::Reset, ERefineryLever::Purge, ERefineryLever::Scrape, ERefineryLever::Repair, ERefineryLever::Calibrate })
+	{
+		if (Text.Equals(LeverName(Lever), ESearchCase::IgnoreCase)) { OutLever = Lever; return true; }
+	}
+	return false;
+}
+
+const TCHAR* RefineryLayouts::StatusName(EStillStatus Status)
+{
+	switch (Status)
+	{
+	case EStillStatus::Idle: return TEXT("Idle");
+	case EStillStatus::Running: return TEXT("Running");
+	case EStillStatus::Popped: return TEXT("Popped");
+	case EStillStatus::Flash: return TEXT("Flash");
+	case EStillStatus::Failed: return TEXT("Failed");
+	default: return TEXT("Unknown");
+	}
+}

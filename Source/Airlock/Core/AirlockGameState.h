@@ -8,6 +8,7 @@
 #include "Ship/CargoModel.h"
 #include "Ship/ShipAtmosphere.h"
 #include "Ship/FuelSystem.h"
+#include "Ship/RefineryModel.h"
 #include "AirlockGameState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
@@ -83,6 +84,12 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_Fuel) FFuelState Fuel;
 	void PublishFuel(const FFuelState& InFuel);
 	UFUNCTION() void OnRep_Fuel();
+	/** The refinery floor's stills, tank and waiting casks (M5-3a), published floored by the game mode; empty off the floor. */
+	UPROPERTY(ReplicatedUsing=OnRep_Refinery) FRefineryState Refinery;
+	void PublishRefinery(const FRefineryState& InRefinery);
+	UFUNCTION() void OnRep_Refinery();
+	/** True on the section whose fixture table has stills (the floor). */
+	bool RefineryHasFloor() const;
 
 	/** Authority-only mirror; unchanged arrays are never rewritten. */
 	void PublishShipGraph(const FShipGraph& Graph);

@@ -44,7 +44,7 @@ bool FCargoModel::Tick(float DeltaSeconds, double VoyageElapsedSeconds)
 	bool bChanged = false;
 	for (auto& Crate : CrateStates)
 	{
-		if (Crate.State == ECargoState::Vented || Crate.State == ECargoState::Burned) { continue; }
+		if (Crate.State == ECargoState::Vented || IsConsumed(Crate.State)) { continue; }
 		const int32 Before = FMath::FloorToInt(Crate.Temperature);
 		// An injected 100 vents even in a rack: cooling cannot undo an already reached threshold.
 		if (Crate.Temperature < Rates.VentTemperature)
@@ -89,7 +89,7 @@ FCargoSlotState* FCargoModel::MutableSlot(FName Id)
 bool FCargoModel::PickUp(FName Id)
 {
 	auto* Crate = MutableCrate(Id);
-	if (!Crate || (Crate->State == ECargoState::Vented || Crate->State == ECargoState::Burned) || Crate->State == ECargoState::Carried) { return false; }
+	if (!Crate || (Crate->State == ECargoState::Vented || IsConsumed(Crate->State)) || Crate->State == ECargoState::Carried) { return false; }
 	if (auto* Slot = MutableSlot(Crate->SlotId)) { Slot->CrateId = NAME_None; }
 	Crate->SlotId = NAME_None;
 	Crate->State = ECargoState::Carried;
@@ -100,6 +100,14 @@ bool FCargoModel::Consume(FName Id)
 	auto* Crate = MutableCrate(Id);
 	if (!Crate || Crate->State != ECargoState::Carried) { return false; }
 	Crate->State = ECargoState::Burned; return true;
+}
+bool FCargoModel::Load(FName Id)
+{
+	auto* Crate = MutableCrate(Id);
+	if (!Crate || (Crate->State != ECargoState::Loose && Crate->State != ECargoState::Carried)) { return false; }
+	if (auto* Slot = MutableSlot(Crate->SlotId)) { Slot->CrateId = NAME_None; }
+	Crate->SlotId = NAME_None;
+	Crate->State = ECargoState::Loaded; return true;
 }
 bool FCargoModel::PutDown(FName Id)
 {
@@ -132,7 +140,7 @@ bool FCargoModel::Release(FName SlotId)
 bool FCargoModel::SetTemperature(FName Id, float Temperature)
 {
 	auto* Crate = MutableCrate(Id);
-	if (!Crate || !Crate->bVolatile || (Crate->State == ECargoState::Vented || Crate->State == ECargoState::Burned)
+	if (!Crate || !Crate->bVolatile || (Crate->State == ECargoState::Vented || IsConsumed(Crate->State))
 		|| !FMath::IsFinite(Temperature) || Temperature < 0 || Temperature > 100) { return false; }
 	Crate->Temperature = Temperature;
 	return true;
@@ -148,6 +156,7 @@ const TCHAR* FCargoModel::StateName(ECargoState State)
 	case ECargoState::Racked: return TEXT("Racked");
 	case ECargoState::Vented: return TEXT("Vented");
 	case ECargoState::Burned: return TEXT("Burned");
+	case ECargoState::Loaded: return TEXT("Loaded");
 	default: return TEXT("Unknown");
 	}
 }
@@ -177,6 +186,7 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 	for (const auto& Crate : Cargo.Crates())
 	{
 		if (Crate.State == ECargoState::Burned) { ++Result.CratesBurned; }
+		else if (Crate.State == ECargoState::Loaded) { /* in a still on the floor (M5-3a): neither intact nor loose */ }
 		else if (Crate.State == ECargoState::Vented) { ++Result.CratesVented; }
 		else if (Crate.State == ECargoState::Secured || Crate.State == ECargoState::Racked)
 		{
@@ -206,6 +216,7 @@ FVoyageResult FCargoModel::Tally(const FCargoModel& Cargo, const FShipGraph& Shi
 	if (Fuel)
 	{
 		Result.bHasFuelData = true; Result.bLateDock = Fuel->bExhausted;
+		Result.FuelUnitsAtDock = static_cast<float>(Fuel->Units);
 		const int64 Pay = static_cast<int64>(Result.Pay) - static_cast<int64>(SootFine) * Result.CratesBurned
 			- (Result.bLateDock ? LateDockFine : 0);
 		Result.Pay = static_cast<int32>(FMath::Max<int64>(0, Pay));
