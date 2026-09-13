@@ -16,6 +16,8 @@ struct AIRLOCK_API FFloorFixtureSpec
 	UPROPERTY() FName Id;
 	UPROPERTY() EFloorFixtureKind Kind = EFloorFixtureKind::Still;
 	UPROPERTY() FTransform Transform;
+	/** Spill origin in unscaled still-local centimetres. */
+	UPROPERTY() FVector SpillOffset = FVector::ZeroVector;
 	UPROPERTY() FSoftObjectPath Mesh;
 	/** World yaw the label faces (the M3-8 policy). */
 	UPROPERTY() float LabelYaw = 180.f;
@@ -58,6 +60,7 @@ struct AIRLOCK_API FStillControlSpec
 
 namespace RefineryLayouts
 {
+	AIRLOCK_API FVector SpillPoint(const FFloorFixtureSpec& Spec);
 	AIRLOCK_API TArray<FStillControlSpec> StillControls(const FFloorFixtureSpec& Still);
 	/** The floor's fixture table; null for every other section. Positions are probed like the hold's. */
 	AIRLOCK_API const FRefineryLayout* Find(FName SectionId);

@@ -9,6 +9,7 @@
 #include "Ship/ShipAtmosphere.h"
 #include "Ship/FuelSystem.h"
 #include "Ship/RefineryModel.h"
+#include "Ship/FloorHazards.h"
 #include "AirlockGameState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnShipGraphChanged);
@@ -88,6 +89,10 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_Refinery) FRefineryState Refinery;
 	void PublishRefinery(const FRefineryState& InRefinery);
 	UFUNCTION() void OnRep_Refinery();
+	UPROPERTY(ReplicatedUsing=OnRep_FloorHazards) FFloorHazardState FloorHazards;
+	UPROPERTY(Replicated) int32 FloorCriticals = 0;
+	void PublishFloorHazards(const FFloorHazardState& InHazards);
+	UFUNCTION() void OnRep_FloorHazards();
 	/** True on the section whose fixture table has stills (the floor). */
 	bool RefineryHasFloor() const;
 

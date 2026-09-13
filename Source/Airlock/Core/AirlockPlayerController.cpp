@@ -729,6 +729,22 @@ void AAirlockPlayerController::ServerFeedById_Implementation(FName CrateId)
 
 // --- The refinery floor's stills (M5-3a) ---
 void AAirlockPlayerController::AirlockRefinery() { ServerRefineryStatus(); }
+void AAirlockPlayerController::AirlockFloor() { ServerFloorStatus(); }
+void AAirlockPlayerController::AirlockSpill(FName StillId, float Litres) { ServerSpill(StillId, Litres); }
+void AAirlockPlayerController::ServerFloorStatus_Implementation()
+{
+	if (!CheatAllowed(TEXT("AirlockFloor"))) { return; }
+	const auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr;
+	const auto* GS = GetWorld() ? GetWorld()->GetGameState<AAirlockGameState>() : nullptr;
+	if (!GM || !GS) { UE_LOG(LogAirlock, Log, TEXT("Floor status rejected: no game state")); return; }
+	UE_LOG(LogAirlock, Log, TEXT("%s"), *GM->HazardSummary());
+	UE_LOG(LogAirlock, Log, TEXT("FloorCriticals %d"), GS->FloorCriticals);
+}
+void AAirlockPlayerController::ServerSpill_Implementation(FName StillId, float Litres)
+{
+	if (!CheatAllowed(TEXT("AirlockSpill"))) { return; }
+	if (auto* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAirlockGameMode>() : nullptr) { GM->HazardSpill(StillId, Litres); }
+}
 void AAirlockPlayerController::AirlockKnob(FName StillId, FString Knob, int32 Steps) { ServerKnob(StillId, Knob, Steps, false); }
 void AAirlockPlayerController::AirlockKnobStep(FName StillId, FString Knob, int32 Delta) { ServerKnob(StillId, Knob, Delta, true); }
 void AAirlockPlayerController::AirlockStillLoad(FName StillId, FName CaskId) { ServerStillLoad(StillId, CaskId); }

@@ -12,12 +12,18 @@
 #include "Ship/FuelLayouts.h"
 
 TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>& Modules, const TArray<FShipLineState>& Lines,
-	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air, const FFuelState* Fuel, bool bSummaries, const FRefineryState* Refinery)
+	const TArray<FCargoCrateState>& Cargo, const FAtmosphereState* Air, const FFuelState* Fuel, bool bSummaries, const FRefineryState* Refinery,
+	const FFloorHazardState* Hazards, int32 FloorCriticals)
 {
 	TArray<FTaskBoardRow> Rows;
 	const FFuelRates FuelRates;
 	const FRefineryRates RefineryRates;
-	// The floor (M5-3a): a still that has stopped or is in the warning band comes before everything else.
+	if (FloorCriticals > 0)
+	{
+		Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "FloorCriticalTask", "{0} critical - {1} cr medical"),
+			FText::AsNumber(FloorCriticals), FText::AsNumber(FMath::RoundToInt(FloorCriticals * RefineryRates.MedicalFineCr))), true });
+	}
+	// Medical totals, urgent still tasks, puddles, then the existing fuel/air and remaining work.
 	if (Refinery)
 	{
 		for (const FStillState& Still : Refinery->Stills)
@@ -31,6 +37,13 @@ TArray<FTaskBoardRow> UTaskBoardWidget::BuildRows(const TArray<FShipModuleState>
 				Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "StillPressureTask", "{0} {1} bar - open the vent"), Id,
 					FText::FromString(FString::Printf(TEXT("%.1f"), Still.PressureBar))), true });
 			}
+		}
+	}
+	if (Hazards)
+	{
+		for (const auto& Spill : Hazards->Spills)
+		{
+			Rows.Add({ FText::Format(NSLOCTEXT("Airlock", "FloorSpillTask", "Spill by {0} - squeegee"), FText::FromName(Spill.StillId)), false });
 		}
 	}
 	if (Fuel && Fuel->bFeedLeak)
@@ -209,6 +222,8 @@ void UTaskBoardWidget::UpdateState(AAirlockGameState* State)
 		RefreshRows();
 		LastSeconds = INDEX_NONE;
 	}
+	// FloorCriticals is a plain replicated total and may arrive separately from the hazard notification.
+	if (State && LastFloorCriticals != State->FloorCriticals) { RefreshRows(); }
 	const bool bVisible = State && State->bVoyageActive && !State->CurrentSectionId.IsNone() && State->CurrentSectionId != TEXT("StationHub");
 	SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	if (bVisible && ReadoutText)
@@ -239,8 +254,10 @@ void UTaskBoardWidget::RefreshRows()
 	TaskRows->ClearChildren();
 	const AAirlockGameState* State = ObservedState.Get();
 	if (!State) { return; }
+	LastFloorCriticals = State->FloorCriticals;
 	for (const FTaskBoardRow& Row : BuildRows(State->ShipModules, State->ShipLines, State->Cargo, State->AirHasAtmosphere() ? &State->Atmosphere : nullptr,
-		FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr, true, State->RefineryHasFloor() ? &State->Refinery : nullptr))
+		FuelLayouts::Find(State->CurrentSectionId) ? &State->Fuel : nullptr, true, State->RefineryHasFloor() ? &State->Refinery : nullptr,
+		State->RefineryHasFloor() ? &State->FloorHazards : nullptr, State->RefineryHasFloor() ? State->FloorCriticals : 0))
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(Row.Text);

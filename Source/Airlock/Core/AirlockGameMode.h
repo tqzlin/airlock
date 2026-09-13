@@ -13,6 +13,7 @@
 #include "Ship/FuelSystem.h"
 #include "Ship/RefineryModel.h"
 #include "Ship/RefineryLayouts.h"
+#include "Ship/FloorHazards.h"
 #include "AirlockGameMode.generated.h"
 
 class AAirlockDoor;
@@ -80,6 +81,12 @@ public:
 	EScrubMode AirGetScrubMode() const;
 	FString AirSummary() const;
 	void NotifyBlackout(APawn* Pawn);
+	// Floor hazard mutations belong here; actors read the game-state mirror.
+	FName HazardSpill(FName Still, float Litres);
+	bool HazardSqueegee(FName Id, APawn* By);
+	FName HazardContains(const FVector& Feet) const;
+	FString HazardSummary() const;
+	void HazardCountStumble(APawn* Pawn);
 	// --- The refinery model on the floor (M5-3a): server API for the console helpers and M5-3b's actors ---
 	/** True on the section whose fixture table has stills (the floor). */
 	bool RefineryHasFloor() const;
@@ -175,6 +182,10 @@ private:
 	FString SpeakerName() const;
 	// --- The refinery model on the floor (M5-3a) ---
 	FRefineryModel RefineryModel;
+	FFloorHazards HazardModel;
+	void TickFloorHazards();
+	void PublishFloorHazards();
+	void PublishFloorCriticals();
 	bool bFirstBatchSpoken = false;
 	void BuildRefinery();
 	void TickRefinery();

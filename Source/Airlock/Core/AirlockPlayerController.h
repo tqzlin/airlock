@@ -161,6 +161,10 @@ public:
 	// the tank), `AirlockKnob <Still> <Heat|Feed|Vent> <0..20>`, `AirlockKnobStep <Still> <Knob> <delta>`,
 	// `AirlockStillLoad <Still> <Cask>` (no reach), `AirlockStill <Still> <Reset|Purge|Scrape|Repair|Calibrate>`.
 	UFUNCTION(Exec) void AirlockRefinery();
+	UFUNCTION(Exec) void AirlockFloor();
+	UFUNCTION(Exec) void AirlockSpill(FName StillId, float Litres = 200.f);
+	UFUNCTION(Server, Reliable) void ServerFloorStatus();
+	UFUNCTION(Server, Reliable) void ServerSpill(FName StillId, float Litres);
 	UFUNCTION(Exec) void AirlockKnob(FName StillId, FString Knob, int32 Steps);
 	UFUNCTION(Exec) void AirlockKnobStep(FName StillId, FString Knob, int32 Delta);
 	UFUNCTION(Exec) void AirlockStillLoad(FName StillId, FName CaskId);
