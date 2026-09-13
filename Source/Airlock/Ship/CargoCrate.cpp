@@ -50,7 +50,7 @@ void ACargoCrate::OnRep_Spec()
 	if (!bVisualsReady)
 	{
 		ShipVisuals::LoadBody(Body, Spec.Mesh, FallbackScale);
-		ShipVisuals::ConfigureLabel(Label, LabelSize, 180.f, FLinearColor::White, FVector(0, 0, LabelHeight));
+		ShipVisuals::ConfigureLabel(Label, LabelSize, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, LabelHeight));
 		HeatLight->SetRelativeLocation(FVector(0, 0, 60));
 		HeatLight->SetAttenuationRadius(180.f);
 		HeatLight->SetLightColor(FLinearColor::Red);

@@ -38,7 +38,7 @@ void ACargoSlot::OnRep_Spec()
 	{
 		ShipVisuals::LoadBody(Pad, Spec.Mesh, FallbackScale);
 		Pad->SetRelativeScale3D(Pad->GetRelativeScale3D() * Spec.MeshScale);
-		ShipVisuals::ConfigureLabel(Label, 22.f, 180.f, FLinearColor::White, FVector(0, 0, Spec.bRack ? 180 : 35));
+		ShipVisuals::ConfigureLabel(Label, 22.f, Spec.LabelYaw, FLinearColor::White, FVector(0, 0, Spec.bRack ? 180 : 35));
 		bVisualsReady = true;
 	}
 	Refresh();

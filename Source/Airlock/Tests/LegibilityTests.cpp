@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "Ship/ShipVisuals.h"
 #include "Ship/ShipModule.h"
+#include "Ship/CargoLayouts.h"
 #include "Core/AirlockCharacter.h"
 #include "Core/AirlockGameMode.h"
 #include "Core/AirlockGameState.h"
@@ -114,5 +115,28 @@ bool FLegibilityLifeSupportTest::RunTest(const FString& Parameters)
     Env.Mode->AirSetScrubMode(EScrubMode::Hazard);
     TestEqual(TEXT("Hazard mode still updates third line"), Life->Label->Text.ToString(), FString(TEXT("LifeSupport\nNominal  100%\nScrubbers Hazard")));
     return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCargoLabelYawTest, "Airlock.Legibility.CargoLabelsFaceWalkway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCargoLabelYawTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("North faces south"), CargoLayouts::LabelYawFor(1560.001), -90.f);
+	TestEqual(TEXT("Centre faces north"), CargoLayouts::LabelYawFor(1560), 90.f);
+	TestEqual(TEXT("South faces north"), CargoLayouts::LabelYawFor(1559.999), 90.f);
+	TestEqual(TEXT("Hand-built crate default"), FCargoCrateSpec().LabelYaw, 180.f);
+	TestEqual(TEXT("Hand-built slot default"), FCargoSlotSpec().LabelYaw, 180.f);
+	const auto Layout = CargoLayouts::Build(TEXT("Hauler_Mk1"), 12, 6);
+	TestEqual(TEXT("All twelve crate spots"), Layout.Crates.Num(), 12);
+	TestEqual(TEXT("All ten slot spots"), Layout.Slots.Num(), 10);
+	for (const auto& Crate : Layout.Crates)
+	{
+		TestEqual(*Crate.Id.ToString(), Crate.LabelYaw, Crate.Transform.GetLocation().Y > 1560 ? -90.f : 90.f);
+	}
+	for (const auto& Slot : Layout.Slots)
+	{
+		TestEqual(*Slot.Id.ToString(), Slot.LabelYaw, Slot.Transform.GetLocation().Y > 1560 ? -90.f : 90.f);
+		if (Slot.bRack) { TestEqual(TEXT("Rack faces north"), Slot.LabelYaw, 90.f); }
+	}
+	return true;
 }
 #endif
