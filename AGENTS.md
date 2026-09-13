@@ -14,7 +14,7 @@ This file is the shared brief for every agent that works in this repo (Claude, G
 
 ## What the game is
 - Big ships are server shards. A ship's sections are joined by airlock loading screens; life-support caps population per section.
-- MVP scope: a station hub plus NPC-captained, instanced ~20-minute voyages (mining, pirates, derelicts). Nothing else is in scope until the MVP loop is playable end to end.
+- MVP scope: a station hub (in the fiction, the dock deck of the Vell Extractor) plus the NPC-captained, instanced ~20-minute **refining run** in three contract tiers (`Docs/design/refining-run.md`, adopted 2026-09-12): lift cryogenic crude casks, keep the hold's air breathable, survive the fuel beat, dock at the refinery, bring fuel home. The old mining / pirates / derelicts labels become tiers of that one run. Nothing else is in scope until the loop is playable end to end.
 - Gameplay is server-authoritative. Anything that affects state (position, cargo, damage, economy) is decided on the server and replicated; clients predict at most.
 
 ## Code map (Source/Airlock)
