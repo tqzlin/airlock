@@ -197,3 +197,51 @@ Scripts\run-tests.bat Airlock
 $env:AIRLOCK_MCP_PORT = '8001'
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\verify-two-clients.ps1
 ```
+
+## Final proofs on the branch binary (Claude, 2026-09-13, after the red-team fold)
+
+`Scripts\run-tests.bat Airlock` headless: **95 / 95**. Every proof on port 8001 with the worktree's binary at
+0d3f0eb, one after the other, unedited:
+
+| Proof | Result | Time |
+|---|---|---|
+| `verify-two-clients.ps1` | `TWO CLIENTS OK` | 62 s |
+| `verify-loop.ps1` | `LOOP OK` | 53 s |
+| `verify-ship-graph.ps1` | `GRAPH OK` | 73 s |
+| `verify-incidents.ps1` | `INCIDENTS OK` | 59 s |
+| `verify-voyage-clock.ps1` | `CLOCK OK` | 107 s |
+| `verify-level-pass.ps1` | `LEVEL OK` | 152 s |
+| `verify-cargo.ps1` | `CARGO OK` | 89 s |
+| `verify-atmosphere.ps1` | `ATMOSPHERE OK` | 126 s |
+| `verify-fuel.ps1` | `FUEL OK` | 147 s |
+| `verify-refinery.ps1` | `REFINERY OK` | 66 s |
+
+Three runs of this batch were needed, and each failure taught something now written into the code or the docs:
+the first ran with the editor still in two-client mode (the play settings had persisted through a rebuild - the
+proof now restores the ini section too); the second stepped a lone player aside at every PIE start (the occupancy
+test counted every pawn - it now counts pawns possessed by another controller); the third forced the second player
+into the start on the ship (the side-step pre-check probed the capsule at the map PlayerStart's floor-level Z - it
+now uses the engine's own `FindTeleportSpot`). Merged into `main` at b5e6fe8 after M3-8. The merged tree's headless
+run then failed `ArrivalSkipsBlockedSideStep` once (103 / 104): a capsule placed inside the test's wall box is pushed
+out by the engine along X or Y at equal depth, a tie that lands either way, and the side step accepted whichever
+adjusted spot came back. A side step now counts only when the engine finds it clear without a sideways move (a
+vertical lift is fine - map PlayerStarts sit at floor level); a fix commit on the branch, merged into `main`,
+rebuilt, and the eleven proofs run again on that binary (`Docs/STATUS.md`).
+
+### The merged tree (main at 1641a26, 2026-09-13)
+
+`Scriptsun-tests.bat Airlock`: **104 / 104**. Every proof on port 8000, one after the other, unedited:
+
+| Proof | Result | Time |
+|---|---|---|
+| `verify-loop.ps1` | `LOOP OK` | 53 s |
+| `verify-ship-graph.ps1` | `GRAPH OK` | 71 s |
+| `verify-incidents.ps1` | `INCIDENTS OK` | 57 s |
+| `verify-voyage-clock.ps1` | `CLOCK OK` | 106 s |
+| `verify-level-pass.ps1` | `LEVEL OK` | 151 s |
+| `verify-cargo.ps1` | `CARGO OK` | 89 s |
+| `verify-atmosphere.ps1` | `ATMOSPHERE OK` | 124 s |
+| `verify-fuel.ps1` | `FUEL OK` | 148 s |
+| `verify-refinery.ps1` | `REFINERY OK` | 65 s |
+| `verify-legibility.ps1` | `LEGIBILITY OK` | 68 s |
+| `verify-two-clients.ps1` | `TWO CLIENTS OK` | 64 s |
