@@ -176,7 +176,13 @@ FText AStillControl::GetInteractPrompt_Implementation() const
 	default: return FText::GetEmpty();
 	}
 }
-void AStillControl::Interact_Implementation(APawn* Pawn) {}
+void AStillControl::Interact_Implementation(APawn* Pawn)
+{
+	if (Spec.Kind == EStillControl::Hopper)
+	{
+		if (auto* Crew = Cast<AAirlockCharacter>(Pawn); Crew && Crew->CarriedCrate) { Crew->ServerLoadStill(this); }
+	}
+}
 void AStillControl::OnHoldComplete_Implementation(APawn* Pawn)
 {
 	if (!HasAuthority() || !IsValid(Pawn) || Pawn->GetWorld() != GetWorld()) { return; }
