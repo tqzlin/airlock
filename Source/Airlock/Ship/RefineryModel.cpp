@@ -139,6 +139,28 @@ bool FRefineryModel::ClearPop(FName Still)
 	S->Status = EStillStatus::Idle; S->PressureBar = Rates.PressureFloorBar; return true;
 }
 
+bool FRefineryModel::Purge(FName Still)
+{
+	FStillState* S = MutableStill(Still);
+	if (!S || S->Status != EStillStatus::Flash) { return false; }
+	S->Status = EStillStatus::Idle; S->PressureBar = Rates.PressureFloorBar; return true;
+}
+
+bool FRefineryModel::Scrape(FName Still)
+{
+	FStillState* S = MutableStill(Still);
+	if (!S || S->Status != EStillStatus::Idle || !S->CurrentCask.IsNone() || S->ChargeL != 0.f) { return false; }
+	S->Coke = 0.f; S->bFouled = S->Coke >= Rates.FouledCoke; return true;
+}
+
+bool FRefineryModel::Repair(FName Still)
+{
+	FStillState* S = MutableStill(Still);
+	if (!S || S->Status != EStillStatus::Failed) { return false; }
+	S->Status = EStillStatus::Idle; S->Coke = Rates.RepairCoke; S->Condition = 100.f;
+	S->bFouled = S->Coke >= Rates.FouledCoke; return true;
+}
+
 bool FRefineryModel::Tick(float DeltaSeconds, float RoomPpm, float& OutRoomPpm, TArray<FRefineryEvent>& OutEvents)
 {
 	OutRoomPpm = 0.f;
@@ -160,6 +182,16 @@ void FRefineryModel::TickStill(FStillState& S, float Dt, float RoomPpm, float& O
 	const float Heat = static_cast<float>(S.HeatSteps) / Rates.KnobSteps;
 	const float Feed = static_cast<float>(S.FeedSteps) / Rates.KnobSteps;
 	const float Vent = static_cast<float>(S.VentSteps) / Rates.KnobSteps;
+	const auto LoseCharge = [this, &S]()
+	{
+		if (!S.CurrentCask.IsNone()) { ++Floor.CasksLost; }
+		S.ChargeL = 0.f; S.CurrentCask = NAME_None;
+	};
+	const auto Fail = [&S, &OutEvents, &LoseCharge]()
+	{
+		OutEvents.Add(Event(ERefineryEvent::Failed, S));
+		S.Status = EStillStatus::Failed; S.HeatSteps = 0; LoseCharge();
+	};
 
 	// 1. The separator takes a cask even at feed zero: loaded preheating does not drift the trap.
 	if (S.Status == EStillStatus::Idle || (S.Status == EStillStatus::Running && S.ChargeL == 0.f))
@@ -230,8 +262,28 @@ void FRefineryModel::TickStill(FStillState& S, float Dt, float RoomPpm, float& O
 		FRefineryEvent Spill = Event(ERefineryEvent::Spill, S);
 		Spill.Litres = FMath::Min(S.ChargeL, Rates.PopSpillL);
 		OutEvents.Add(Spill); Floor.SpilledL += Spill.Litres; ++Floor.Spills;
-		if (!S.CurrentCask.IsNone()) { ++Floor.CasksLost; }
-		S.ChargeL = 0.f; S.CurrentCask = NAME_None;
+		LoseCharge();
+	}
+
+	// 6. The owner's room reading is fixed for this call; emitted ppm is not fed back here.
+	if (S.Status == EStillStatus::Running && S.ChargeL > 0.f && S.TempK > Rates.FlashK && RoomPpm >= Rates.FlashRoomPpmMin)
+	{
+		OutEvents.Add(Event(ERefineryEvent::Flash, S));
+		S.Status = EStillStatus::Flash; OutRoomPpm += Rates.FlashPpm; ++Floor.Flashes;
+		S.Condition = FMath::Max(0.f, S.Condition - Rates.FlashConditionHit);
+		if (S.Condition <= 0.f) { Fail(); }
+		else { LoseCharge(); }
+	}
+
+	// 7. Both sources add, including during a pop/flash. Failed coils accrue neither source.
+	if (S.Status != EStillStatus::Failed)
+	{
+		const bool WasFouled = S.bFouled;
+		if (S.TempK > Rates.CokeHotK) { S.Coke += Rates.CokeHotRate * Dt; }
+		if (Heat > Rates.CokeDryHeat && Fed == 0.f) { S.Coke += Rates.CokeDryRate * Dt; }
+		S.Coke = FMath::Clamp(S.Coke, 0.f, 100.f); S.bFouled = S.Coke >= Rates.FouledCoke;
+		if (!WasFouled && S.bFouled) { OutEvents.Add(Event(ERefineryEvent::Fouled, S)); }
+		if (S.Coke >= Rates.FailedCoke) { Fail(); }
 	}
 
 	// 8. Drift is charged only for a slice that actually processed crude.

@@ -391,4 +391,179 @@ bool FRefineryPopTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Resumed charge"), M.FindStill(StillId)->ChargeL, 997.5f);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryHotTest, "Airlock.Refinery.Model.HotBatchGasTarAndActualCoke",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryHotTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(1)); Recipe(M, 16, 10, 13);
+	TestEqual(TEXT("Preheat near 300 K"), M.FindStill(StillId)->TempK, 300.f, 0.5f);
+	M.LoadHopper(StillId, TEXT("C1")); FRun Run; Run.Advance(M, 400);
+	TestEqual(TEXT("Hot cask completes"), M.State().CasksRefined, 1);
+	TestEqual(TEXT("No hot diesel"), M.State().TankDieselL, 0.f, 0.5f);
+	TestEqual(TEXT("Hot gas"), M.State().TotalGasL, 650.f, 0.5f);
+	TestEqual(TEXT("Hot tar"), M.State().TotalTarL, 350.f, 0.5f);
+	TestTrue(TEXT("Gas cut plus vent excess fumes"), Run.Ppm > 650.f * M.Rates.RoomPpmPerGasL);
+	// Brief contradiction: 12 K cooling takes the 300 K bath to 288 K, below the 290 K coke threshold.
+	TestEqual(TEXT("Actual coke after preheat and one batch"), M.FindStill(StillId)->Coke, 46.5f, 0.01f);
+	TestEqual(TEXT("Bath settles below coke threshold"), M.FindStill(StillId)->TempK, 288.f, 0.01f);
+	TestFalse(TEXT("Specified hot recipe never fouls"), M.FindStill(StillId)->bFouled);
+	TestEqual(TEXT("No Fouled event rather than the requested one"), Run.Count(ERefineryEvent::Fouled), 0);
+	AddInfo(TEXT("Heat 80% / feed 50%: 0/650/350 L, 288 K, coke 46.5; not the brief's coke 90..95 or Fouled."));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryFlashTest, "Airlock.Refinery.Model.FlashThresholdsLossAndWarmPurge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryFlashTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel Hot; Hot.Build(1, Manifest(2)); Recipe(Hot, 18, 10, 13);
+	TestFalse(TEXT("Unknown purge"), Hot.Purge(TEXT("Missing")));
+	TestFalse(TEXT("Idle purge refused"), Hot.Purge(StillId));
+	Hot.LoadHopper(StillId, TEXT("C1")); Hot.LoadHopper(StillId, TEXT("C2"));
+	for (float Room : { 39.99f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+	{
+		FRefineryModel DryAir = Hot; FRun Run; Run.Advance(DryAir, 1, Room);
+		TestEqual(TEXT("Hot alone or nonfinite room never flashes"), DryAir.State().Flashes, 0);
+		TestEqual(TEXT("Still running"), DryAir.FindStill(StillId)->Status, EStillStatus::Running);
+		TestFalse(TEXT("Running purge refused"), DryAir.Purge(StillId));
+	}
+	FRefineryModel Cool; Cool.Build(1, Manifest(1)); Recipe(Cool); Cool.LoadHopper(StillId, TEXT("C1"));
+	FRun Safe; Safe.Advance(Cool, 1, 500.f);
+	TestEqual(TEXT("Gas alone never flashes"), Cool.State().Flashes, 0);
+	FRefineryModel Control = Hot; FRun NoFlash; NoFlash.Advance(Control, 1, 0.f);
+	FRun Run; Run.Advance(Hot, 1, 40.f);
+	TestEqual(TEXT("Exactly 40 ppm triggers"), Run.Count(ERefineryEvent::Flash), 1);
+	TestEqual(TEXT("Flash adds 40 beyond gas and vent"), Run.Ppm - NoFlash.Ppm, 40.f, 0.001f);
+	TestEqual(TEXT("Flash status"), Hot.FindStill(StillId)->Status, EStillStatus::Flash);
+	TestEqual(TEXT("Thirty condition lost"), Hot.FindStill(StillId)->Condition, 70.f);
+	TestEqual(TEXT("Charge lost once"), Hot.State().CasksLost, 1);
+	TestEqual(TEXT("Charge gone"), Hot.FindStill(StillId)->ChargeL, 0.f);
+	TestEqual(TEXT("Processed gas kept"), Hot.State().TotalGasL, Control.State().TotalGasL);
+	TestEqual(TEXT("Processed tar kept"), Hot.State().TotalTarL, Control.State().TotalTarL);
+	TestEqual(TEXT("Flash identity"), Run.Events[0].CaskId, FName(TEXT("C1")));
+	const float Coke = Hot.FindStill(StillId)->Coke, Temp = Hot.FindStill(StillId)->TempK;
+	Run.Advance(Hot, 4, 40.f);
+	TestEqual(TEXT("Latched fire does not repeat"), Hot.State().Flashes, 1);
+	TestTrue(TEXT("Flashed coils keep cooking"), Hot.FindStill(StillId)->TempK > Temp);
+	TestEqual(TEXT("Hot and dry coke both accrue in flash"), Hot.FindStill(StillId)->Coke - Coke, 0.9f, 0.001f);
+	const FStillState Before = *Hot.FindStill(StillId);
+	TestTrue(TEXT("Purge accepted"), Hot.Purge(StillId));
+	FStillState Expected = Before; Expected.Status = EStillStatus::Idle; Expected.PressureBar = 1.f;
+	TestTrue(TEXT("Purge preserves warm bath, damage, coke and hopper"), *Hot.FindStill(StillId) == Expected);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryFourFlashesTest, "Airlock.Refinery.Model.FourFlashesFailAndCutCoils",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryFourFlashesTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Rates.CokeHotRate = M.Rates.CokeDryRate = 0.f;
+	M.Build(1, Manifest(4)); Recipe(M, 18, 10, 13); FRun Run;
+	for (int32 I = 1; I <= 4; ++I)
+	{
+		M.LoadHopper(StillId, FName(*FString::Printf(TEXT("C%d"), I))); Run.Advance(M, 1, 40.f);
+		TestEqual(TEXT("One lost per flash"), M.State().CasksLost, I);
+		TestEqual(TEXT("Condition clamps at zero"), M.FindStill(StillId)->Condition, FMath::Max(0.f, 100.f - 30.f * I));
+		if (I < 4) { TestTrue(TEXT("Purge between flashes"), M.Purge(StillId)); }
+	}
+	TestEqual(TEXT("Four flashes"), Run.Count(ERefineryEvent::Flash), 4);
+	TestEqual(TEXT("One failure"), Run.Count(ERefineryEvent::Failed), 1);
+	TestEqual(TEXT("Flash then failure"), Run.Events[3].Type, ERefineryEvent::Flash);
+	TestEqual(TEXT("Failure follows fourth flash"), Run.Events[4].Type, ERefineryEvent::Failed);
+	TestEqual(TEXT("Failure keeps cask identity"), Run.Events[4].CaskId, FName(TEXT("C4")));
+	TestEqual(TEXT("Failed"), M.FindStill(StillId)->Status, EStillStatus::Failed);
+	TestEqual(TEXT("Coils cut"), M.FindStill(StillId)->HeatSteps, 0);
+	TestFalse(TEXT("Failed cannot purge"), M.Purge(StillId));
+	TestFalse(TEXT("Failed cannot calibrate"), M.Calibrate(StillId));
+	TestFalse(TEXT("Failed cannot reset pop"), M.ClearPop(StillId));
+	const float Temp = M.FindStill(StillId)->TempK; Run.Advance(M, 4, 500.f);
+	TestTrue(TEXT("Failed bath cools"), M.FindStill(StillId)->TempK < Temp);
+	TestEqual(TEXT("No repeated failure or phantom cask loss"), M.State().CasksLost, 4);
+	TestEqual(TEXT("Events stay latched"), Run.Events.Num(), 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryFouledTest, "Airlock.Refinery.Model.DryCokeFoulsButKeepsFeedingAtHalfYield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryFouledTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(1)); M.SetKnob(StillId, ERefineryKnob::Heat, 12);
+	FRun Dry; Dry.Advance(M, 801);
+	TestEqual(TEXT("Dry source alone at 0.3/s"), M.FindStill(StillId)->Coke, 60.075f, 0.01f);
+	TestEqual(TEXT("Crossing emits once"), Dry.Count(ERefineryEvent::Fouled), 1);
+	TestTrue(TEXT("Fouled mirror"), M.FindStill(StillId)->bFouled);
+	TestEqual(TEXT("Fouled is not a status"), M.FindStill(StillId)->Status, EStillStatus::Idle);
+	Recipe(M); FRefineryModel Clean = M;
+	TestTrue(TEXT("Idle scraping allowed"), Clean.Scrape(StillId));
+	M.LoadHopper(StillId, TEXT("C1")); Clean.LoadHopper(StillId, TEXT("C1"));
+	FRun DirtyRun, CleanRun; DirtyRun.Advance(M, 200); CleanRun.Advance(Clean, 200);
+	TestEqual(TEXT("Fouled continues running"), M.FindStill(StillId)->Status, EStillStatus::Running);
+	TestEqual(TEXT("Feed rate unchanged"), M.FindStill(StillId)->ChargeL, 500.f);
+	TestFalse(TEXT("Cannot scrape a running batch"), M.Scrape(StillId));
+	DirtyRun.Advance(M, 200); CleanRun.Advance(Clean, 200);
+	TestEqual(TEXT("Fouled batch still completes"), M.State().CasksRefined, 1);
+	TestEqual(TEXT("Exactly half clean diesel"), M.State().TankDieselL, Clean.State().TankDieselL * 0.5f, 0.01f);
+	TestEqual(TEXT("No repeat Fouled while over threshold"), DirtyRun.Count(ERefineryEvent::Fouled), 0);
+	TestTrue(TEXT("Scrape after batch"), M.Scrape(StillId));
+	M.SetKnob(StillId, ERefineryKnob::Heat, 12); DirtyRun.Advance(M, 801);
+	TestEqual(TEXT("Scrape re-arms crossing"), DirtyRun.Count(ERefineryEvent::Fouled), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryCokeFailureTest, "Airlock.Refinery.Model.CokeFailureRepairAndRearmedFouling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryCokeFailureTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(2)); Recipe(M, 16, 10, 13); M.LoadHopper(StillId, TEXT("C1"));
+	FRun Run; Run.Advance(M, 80); M.SetKnob(StillId, ERefineryKnob::Feed, 0);
+	const float Made = M.State().TankDieselL + M.State().TotalGasL + M.State().TotalTarL;
+	for (int32 I = 0; I < 800 && M.FindStill(StillId)->Status != EStillStatus::Failed; ++I) { Run.Advance(M, 1); }
+	TestEqual(TEXT("Coke fails the loaded still"), M.FindStill(StillId)->Status, EStillStatus::Failed);
+	TestEqual(TEXT("Coke capped"), M.FindStill(StillId)->Coke, 100.f);
+	TestEqual(TEXT("Heat cut"), M.FindStill(StillId)->HeatSteps, 0);
+	TestEqual(TEXT("Lost one loaded cask"), M.State().CasksLost, 1);
+	TestEqual(TEXT("Charge gone"), M.FindStill(StillId)->ChargeL, 0.f);
+	TestEqual(TEXT("Tank cuts survive failure"), M.State().TankDieselL + M.State().TotalGasL + M.State().TotalTarL, Made);
+	TestEqual(TEXT("One Fouled"), Run.Count(ERefineryEvent::Fouled), 1);
+	TestEqual(TEXT("One Failed"), Run.Count(ERefineryEvent::Failed), 1);
+	TestEqual(TEXT("No completed batch on failure"), Run.Count(ERefineryEvent::BatchDone), 0);
+	TestTrue(TEXT("Failed hopper still accepts"), M.LoadHopper(StillId, TEXT("C2")));
+	M.SetKnob(StillId, ERefineryKnob::Feed, 18); Run.Advance(M, 40);
+	TestEqual(TEXT("Failed still adds no dry or hot coke"), M.FindStill(StillId)->Coke, 100.f);
+	TestEqual(TEXT("Failed feed neither spills nor consumes"), M.State().Spills, 0);
+	TestEqual(TEXT("Failed queue stays"), M.FindStill(StillId)->Hopper.Num(), 1);
+	TestFalse(TEXT("Scrape cannot substitute for repair"), M.Scrape(StillId));
+	TestFalse(TEXT("Unknown repair"), M.Repair(TEXT("Missing")));
+	const FStillState Before = *M.FindStill(StillId); TestTrue(TEXT("Repair accepted"), M.Repair(StillId));
+	FStillState Expected = Before; Expected.Status = EStillStatus::Idle; Expected.Coke = 40.f;
+	Expected.bFouled = false; Expected.Condition = 100.f;
+	TestTrue(TEXT("Repair only resets status coke mirror and condition"), *M.FindStill(StillId) == Expected);
+	TestFalse(TEXT("Cannot repair twice"), M.Repair(StillId));
+	M.SetKnob(StillId, ERefineryKnob::Heat, 12); M.SetKnob(StillId, ERefineryKnob::Feed, 0); Run.Advance(M, 268);
+	TestEqual(TEXT("Repair re-arms Fouled"), Run.Count(ERefineryEvent::Fouled), 2);
+	TestEqual(TEXT("Queued charge after repair"), M.FindStill(StillId)->ChargeL, 1000.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefineryScrapeTest, "Airlock.Refinery.Model.IdleScrapeAllowsHopperAndVerbsRejectWithoutMutation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FRefineryScrapeTest::RunTest(const FString& Parameters)
+{
+	FRefineryModel M; M.Build(1, Manifest(1)); M.SetKnob(StillId, ERefineryKnob::Heat, 12);
+	FRun Run; Run.Advance(M, 40); M.LoadHopper(StillId, TEXT("C1"));
+	const FStillState Before = *M.FindStill(StillId);
+	TestTrue(TEXT("Loaded hopper is still scrapeable before next tick"), M.Scrape(StillId));
+	FStillState Expected = Before; Expected.Coke = 0.f; Expected.bFouled = false;
+	TestTrue(TEXT("Scrape changes only coke and mirror"), *M.FindStill(StillId) == Expected);
+	Run.Advance(M, 1);
+	const FRefineryState Loaded = M.State();
+	TestFalse(TEXT("Loaded separator cannot scrape"), M.Scrape(StillId));
+	TestFalse(TEXT("Unknown scrape"), M.Scrape(TEXT("Missing")));
+	TestFalse(TEXT("Running cannot repair"), M.Repair(StillId));
+	TestFalse(TEXT("Running cannot purge"), M.Purge(StillId));
+	TestFalse(TEXT("Running cannot reset"), M.ClearPop(StillId));
+	TestTrue(TEXT("Rejections change nothing"), M.State() == Loaded);
+	return true;
+}
 #endif
