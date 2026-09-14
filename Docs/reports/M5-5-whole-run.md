@@ -246,3 +246,29 @@ From `..\Airlock-claude` in PowerShell (`$env:AIRLOCK_MCP_PORT = '8001'`): `Scri
 `Scripts\build-editor.bat`, `Scripts\run-tests.bat Airlock` (read `Saved\Automation\Report\index.json`),
 `Scripts\run-editor.bat`, force single-player play settings through `Scripts\lib\mcp.ps1` (HANDOFF section 5), then
 `Scripts\verify-floor.ps1`, `Scripts\verify-legibility.ps1`, `Scripts\verify-prompt.ps1`, `Scripts\verify-two-clients.ps1`.
+
+## Reviewer's verification (Claude, 2026-09-13 evening; cut short by a shutdown)
+
+Merged into `main` as `8edd9b6` (`git merge --no-ff` from `d118dda`). Rebuilt in `Airlock\` (`Result: Succeeded`) and
+the headless suite on the merged tree: **159 passed, 0 failed, 0 not run** (`Saved\Automation\Report\index.json`).
+
+The proof batch on the merged tree (port 8000, single-player settings forced first) was run in two passes because the
+editor window minimized itself between the third and fourth proofs (the MCP kept answering; every capture then failed
+with `Failed to capture any editor windows` and the two-client proof's `AirlockCapture` reported `the viewport did not
+render` - HANDOFF section 5's known symptom; `restore-editor-window.ps1` fixed it and the batch now restores the window
+before every proof). Green on the merged tree before the machine was shut down:
+
+| Proof | Exit | Tail |
+| --- | --- | --- |
+| loop | 0 | `LOOP OK: hub spawn -> booked -> Dock B -> Hauler_Mk1 PlayerStart -> exit -> hub PlayerStart, voyage complete` |
+| ship-graph | 0 | `GRAPH OK: seven nominal modules -> coolant leak -> degraded coolant drifts core -> hold repairs line -> coolant restored -> hub PlayerStart, empty graph` |
+| incidents | 0 | `INCIDENTS OK: solo schedule -> teaching leak and captain -> hold repair clears row -> core task -> climax -> no replay -> hub` |
+| voyage-clock | 0 | `CLOCK OK: 75 seconds remaining -> one-minute captain line -> automatic return card -> StationHub PlayerStart, voyage complete` |
+| level-pass | 0 | `LEVEL OK: hold -> engineering (2 lines repaired) -> corridor (2 lines repaired) -> galley -> bridge seat, board, stand -> hub PlayerStart` |
+| cargo | 0 | `CARGO OK: secure two -> shift and cool C2 -> vent C4 -> 2/4 intact, pay 400 -> hub last run` |
+
+**Still to run on the merged tree** (next session, `Airlock\`, port 8000, in this order): atmosphere, fuel, refinery,
+legibility, two-clients, floor, prompt. All seven passed on the branch's own binary (legibility, prompt, two-clients and
+floor in this report's table above; atmosphere, fuel and refinery are untouched by M5-5 except for the label material and
+the put-down trace, which the six merged-tree proofs above already exercise on the ship). Until those seven exit 0 on
+`main`, treat M5-5 as merged-and-built, not merged-and-proven.
